@@ -1,0 +1,25 @@
+# Ignore all target directories recursively (for multi-project Rust repos)
+**/target/
+
+# Ignore debug, release, and incremental builds
+**/debug/
+**/release/
+**/incremental/
+
+# Ignore Cargo backup and temp files
+**/*.rs.bk
+**/*.log
+**/*.tmp
+**/*.old
+**/*.swp
+**/*.swo
+**/*~
+
+# Ignore dependency folders (if vendoring dependencies)
+**/vendor/
+
+# Ignore lockfiles for libraries; include them for binaries if needed
+# Uncomment if all are libraries and should skip tracking lock files
+# **/Cargo.lock
+
+# IDE
