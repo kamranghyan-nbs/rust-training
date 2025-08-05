@@ -21,15 +21,24 @@ fn main() {
 
     // Returning Values & Scope
 
-    let result = gives_ownership();
-    println!("Result: {}", result);
+    // let result = gives_ownership();
+    // println!("Result: {}", result);
 
-    let s1 = String::from("Pakistan");
-    let result1 = takes_and_gives_back(s1);
+    // let s1 = String::from("Pakistan");
+    // let result1 = takes_and_gives_back(s1);
 
-    println!("Result 2: {}", result1)
+    // println!("Result 2: {}", result1)
 
+    // Multiple value returns ownership
 
+    let s = String::from("Pakistan");
+    let (result, result_1) =  lenght(s);
+    println!("The length of value {} is {}", result_1, result);
+
+}
+
+fn lenght(s: String) -> (usize, String) {
+    (s.len(), s)
 }
 
 fn gives_ownership() -> String {
