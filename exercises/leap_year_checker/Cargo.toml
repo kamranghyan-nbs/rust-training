@@ -1,0 +1,11 @@
+[package]
+name = "leap_year_checker"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+
+[[bin]]
+name = "main"
+path = "src/main.rs"

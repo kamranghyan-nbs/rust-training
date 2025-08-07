@@ -47,9 +47,19 @@ fn main() {
     // println!("{}", s);
 
     //  Str indexing
-    let s = "Pakistan";
-    let index_data = &s[0..4];
-    println!("{}", index_data)
+    // let s = "Pakistan";
+    // let index_data = &s[0..4];
+    // println!("{}", index_data)
+
+    // Iterating on str
+
+    for c in "pakistan".chars() {
+        println!("{}", c)
+    }
+
+    for c in "pakistan".bytes() {
+        println!("{}", c)
+    }
 
 
 }
