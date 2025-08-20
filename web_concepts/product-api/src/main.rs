@@ -9,6 +9,7 @@ use std::sync::Arc;
 use tower::ServiceBuilder;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tower::limit::RateLimitLayer;
 
 mod config;
 mod entities;
@@ -119,7 +120,8 @@ async fn create_app(state: AppState) -> Router {
         .layer(
             ServiceBuilder::new()
                 .layer(TraceLayer::new_for_http())
-                .layer(CorsLayer::permissive()),
+                .layer(CorsLayer::permissive())
+                .layer(RateLimitLayer::new(1, std::time::Duration::from_secs(10)))
         )
         .with_state(state)
 }
