@@ -1,52 +1,42 @@
 use crate::{
-    entities::{prelude::*, product},
     error::AppError,
-    models::{CreateProductRequest, ProductListResponse, ProductResponse, UpdateProductRequest},
+    models::{
+        CreateProductRequest, ProductListResponse, ProductResponse, UpdateProductRequest,
+        ProductSearchRequest, ProductSearchResponse, ProductSearchFilters, ProductStatsResponse,
+    },
+    repository::product::ProductRepositoryTrait,
 };
-use sea_orm::{prelude::*, ActiveModelTrait, Set, QueryOrder, PaginatorTrait};
+use std::sync::Arc;
 use uuid::Uuid;
 
-pub struct ProductService;
+pub struct ProductService<T: ProductRepositoryTrait> {
+    product_repository: Arc<T>,
+}
 
-impl ProductService {
+impl<T: ProductRepositoryTrait> ProductService<T> {
+    pub fn new(product_repository: Arc<T>) -> Self {
+        Self { product_repository }
+    }
+
     pub async fn create_product(
-        db: &DatabaseConnection,
+        &self,
         request: CreateProductRequest,
     ) -> Result<ProductResponse, AppError> {
-        let product_id = Uuid::new_v4();
-        let now = chrono::Utc::now();
-
-        let new_product = product::ActiveModel {
-            id: Set(product_id),
-            name: Set(request.name),
-            description: Set(request.description),
-            price: Set(request.price),
-            quantity: Set(request.quantity),
-            category: Set(request.category),
-            created_at: Set(now),
-            updated_at: Set(now),
-        };
-
-        let product = new_product.insert(db).await?;
+        let product = self.product_repository.create(request).await?;
         Ok(ProductResponse::from(product))
     }
 
     pub async fn get_all_products(
-        db: &DatabaseConnection,
+        &self,
         page: Option<u64>,
         per_page: Option<u64>,
     ) -> Result<ProductListResponse, AppError> {
         let page = page.unwrap_or(1);
-        let per_page = per_page.unwrap_or(10).min(100); // Limit to 100 items per page
+        let per_page = per_page.unwrap_or(10).min(100);
 
-        let paginator = Product::find()
-            .order_by_desc(product::Column::CreatedAt)
-            .paginate(db, per_page);
+        let (products, total) = self.product_repository.find_all(Some(page), Some(per_page)).await?;
 
-        let total = paginator.num_items().await?;
-        let products = paginator
-            .fetch_page(page.saturating_sub(1))
-            .await?
+        let products = products
             .into_iter()
             .map(ProductResponse::from)
             .collect();
@@ -60,66 +50,151 @@ impl ProductService {
     }
 
     pub async fn get_product(
-        db: &DatabaseConnection,
+        &self,
         product_id: Uuid,
     ) -> Result<ProductResponse, AppError> {
-        let product = Product::find_by_id(product_id)
-            .one(db)
+        let product = self
+            .product_repository
+            .find_by_id(product_id)
             .await?
-            .ok_or(AppError::NotFound)?;
+            .ok_or(AppError::NotFound {
+                resource_type: "Product".to_string(),
+                resource_id: Some(product_id.to_string()),
+                error_id: uuid::Uuid::new_v4(),
+            })?;
 
         Ok(ProductResponse::from(product))
     }
 
     pub async fn update_product(
-        db: &DatabaseConnection,
+        &self,
         product_id: Uuid,
         request: UpdateProductRequest,
     ) -> Result<ProductResponse, AppError> {
-        let product = Product::find_by_id(product_id)
-            .one(db)
-            .await?
-            .ok_or(AppError::NotFound)?;
-
-        let mut active_product: product::ActiveModel = product.into();
-
-        if let Some(name) = request.name {
-            active_product.name = Set(name);
-        }
-        if let Some(description) = request.description {
-            active_product.description = Set(Some(description));
-        }
-        if let Some(price) = request.price {
-            active_product.price = Set(price);
-        }
-        if let Some(quantity) = request.quantity {
-            active_product.quantity = Set(quantity);
-        }
-        if let Some(category) = request.category {
-            active_product.category = Set(Some(category));
-        }
-        active_product.updated_at = Set(chrono::Utc::now());
-
-        let updated_product = active_product.update(db).await?;
+        let updated_product = self.product_repository.update(product_id, request).await?;
         Ok(ProductResponse::from(updated_product))
     }
 
     pub async fn delete_product(
-        db: &DatabaseConnection,
+        &self,
         product_id: Uuid,
     ) -> Result<(), AppError> {
-        let result = Product::delete_by_id(product_id).exec(db).await?;
+        let deleted = self.product_repository.delete(product_id).await?;
         
-        if result.rows_affected == 0 {
-            return Err(AppError::NotFound);
+        if !deleted {
+            return Err(AppError::NotFound {
+                resource_type: "Product".to_string(),
+                resource_id: Some(product_id.to_string()),
+                error_id: uuid::Uuid::new_v4(),
+            });
         }
 
         Ok(())
     }
+
+    // NEW SEARCH METHODS
+    pub async fn search_products(
+        &self,
+        search_request: ProductSearchRequest,
+    ) -> Result<ProductSearchResponse, AppError> {
+        let page = search_request.page.unwrap_or(1);
+        let per_page = search_request.per_page.unwrap_or(10).min(100);
+
+        let (products, total) = self.product_repository.search(search_request.clone()).await?;
+
+        let products = products
+            .into_iter()
+            .map(ProductResponse::from)
+            .collect();
+
+        // Build filters applied summary
+        let filters_applied = ProductSearchFilters {
+            query: search_request.query,
+            category: search_request.category,
+            price_range: match (search_request.min_price, search_request.max_price) {
+                (Some(min), Some(max)) => Some((min, max)),
+                _ => None,
+            },
+            quantity_range: match (search_request.min_quantity, search_request.max_quantity) {
+                (Some(min), Some(max)) => Some((min, max)),
+                _ => None,
+            },
+            in_stock: search_request.in_stock,
+        };
+
+        Ok(ProductSearchResponse {
+            products,
+            total,
+            page,
+            per_page,
+            filters_applied,
+        })
+    }
+
+    pub async fn get_products_by_category(
+        &self,
+        category: &str,
+    ) -> Result<Vec<ProductResponse>, AppError> {
+        let products = self.product_repository.find_by_category(category).await?;
+        
+        Ok(products
+            .into_iter()
+            .map(ProductResponse::from)
+            .collect())
+    }
+
+    pub async fn get_products_by_price_range(
+        &self,
+        min_price: rust_decimal::Decimal,
+        max_price: rust_decimal::Decimal,
+    ) -> Result<Vec<ProductResponse>, AppError> {
+        let products = self.product_repository.find_by_price_range(min_price, max_price).await?;
+        
+        Ok(products
+            .into_iter()
+            .map(ProductResponse::from)
+            .collect())
+    }
+
+    pub async fn get_low_stock_products(
+        &self,
+        threshold: i32,
+    ) -> Result<Vec<ProductResponse>, AppError> {
+        let products = self.product_repository.find_low_stock(threshold).await?;
+        
+        Ok(products
+            .into_iter()
+            .map(ProductResponse::from)
+            .collect())
+    }
+
+    pub async fn get_product_stats(&self) -> Result<ProductStatsResponse, AppError> {
+        self.product_repository.get_product_stats().await
+    }
+
+    pub async fn get_similar_products(
+        &self,
+        product_name: &str,
+        limit: u64,
+    ) -> Result<Vec<ProductResponse>, AppError> {
+        let products = self.product_repository.find_similar_products(product_name, limit).await?;
+        
+        Ok(products
+            .into_iter()
+            .map(ProductResponse::from)
+            .collect())
+    }
+
+    pub async fn get_trending_categories(
+        &self,
+        limit: u64,
+    ) -> Result<Vec<crate::models::CategoryStats>, AppError> {
+        self.product_repository.get_trending_categories(limit).await
+    }
 }
 
-impl From<product::Model> for ProductResponse {
-    fn from(product: product::Model) -> Self {
+impl From<crate::entities::product::Model> for ProductResponse {
+    fn from(product: crate::entities::product::Model) -> Self {
         Self {
             id: product.id,
             name: product.name,

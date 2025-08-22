@@ -5,23 +5,21 @@ use axum::{
     Router,
 };
 use sea_orm::{Database, DatabaseConnection};
-use tracing::{info, instrument, warn, error};
 use std::sync::Arc;
 use tower::ServiceBuilder;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-
 mod config;
 mod entities;
 mod error;
 mod handlers;
+mod logging;
 mod middleware;
 mod models;
+mod repository;
 mod services;
 mod utils;
-mod repository;
-mod logging;
 
 use config::Config;
 use error::AppError;
@@ -50,36 +48,29 @@ async fn main() -> Result<(), AppError> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    tracing::info!("Starting Product API application...");
+    tracing::info!("🚀 Starting Product API application...");
 
     // Load configuration
-    tracing::info!("Loading configuration...");
+    tracing::info!("📝 Loading configuration...");
     let config = Arc::new(Config::from_env()?);
-    tracing::info!("Configuration loaded successfully");
+    tracing::info!("✅ Configuration loaded successfully");
 
     // Connect to database with retries
-    tracing::info!("Connecting to database: {}", config.database_url);
+    tracing::info!("🔌 Connecting to database: {}", config.database_url);
     let db = connect_with_retry(&config.database_url).await?;
 
-    // Create rate limiter
-    tracing::info!("Initializing rate limiter...");
-    let rate_limiter = RateLimiter::new(
-        config.rate_limit_per_ip,
-        config.rate_limit_per_user,
-    );
-
     // Create app state
-    tracing::info!("Creating application state...");
-    let state = AppState { db, config, rate_limiter };
+    tracing::info!("🏗️ Creating application state...");
+    let state = AppState { db, config };
 
     // Build the application router
-    tracing::info!("Building application router...");
+    tracing::info!("🛤️ Building application router...");
     let app = create_app(state).await;
 
     // Start the server
-    tracing::info!("Binding to address 0.0.0.0:8080");
+    tracing::info!("🎯 Binding to address 0.0.0.0:8080");
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
-    tracing::info!("Server starting successfully on http://0.0.0.0:8080");
+    tracing::info!("🌟 Server starting successfully on http://0.0.0.0:8080");
 
     axum::serve(listener, app).await?;
 
@@ -91,7 +82,7 @@ async fn connect_with_retry(database_url: &str) -> Result<DatabaseConnection, Ap
     let mut retries = 5;
     let mut delay = std::time::Duration::from_secs(1);
 
-    info!("Starting database connection with retry logic...");
+    info!("🔄 Starting database connection with retry logic...");
 
     loop {
         let connection_attempt = retries;
@@ -100,7 +91,7 @@ async fn connect_with_retry(database_url: &str) -> Result<DatabaseConnection, Ap
                 info!(
                     database_url = %database_url,
                     attempts_used = %(6 - retries),
-                    "Successfully connected to database"
+                    "✅ Successfully connected to database"
                 );
                 return Ok(db);
             }
@@ -110,7 +101,7 @@ async fn connect_with_retry(database_url: &str) -> Result<DatabaseConnection, Ap
                     retries_left = %retries,
                     delay_seconds = %delay.as_secs(),
                     attempt = %connection_attempt,
-                    "Failed to connect to database, retrying..."
+                    "⚠️ Failed to connect to database, retrying..."
                 );
                 
                 tokio::time::sleep(delay).await;
@@ -122,7 +113,7 @@ async fn connect_with_retry(database_url: &str) -> Result<DatabaseConnection, Ap
                     error = %e,
                     database_url = %database_url,
                     total_attempts = %6,
-                    "Failed to connect to database after all retries"
+                    "❌ Failed to connect to database after all retries"
                 );
                 return Err(AppError::DatabaseError(e));
             }
@@ -151,16 +142,16 @@ async fn shutdown_signal() {
 
     tokio::select! {
         _ = ctrl_c => {
-            info!("Received Ctrl+C signal, starting graceful shutdown...");
+            info!("🛑 Received Ctrl+C signal, starting graceful shutdown...");
         },
         _ = terminate => {
-            info!("Received terminate signal, starting graceful shutdown...");
+            info!("🛑 Received terminate signal, starting graceful shutdown...");
         },
     }
 }
 
 async fn create_app(state: AppState) -> Router {
-    // Public routes (no authentication required)
+    // Public routes (no authentication required) - with IP-based rate limiting
     let public_routes = Router::new()
         .route("/health", get(health_check))
         .route("/auth/login", post(auth::login))
@@ -170,14 +161,15 @@ async fn create_app(state: AppState) -> Router {
             ip_rate_limit_middleware,
         ));
 
-    // Protected routes (authentication required)
+    // Protected routes (authentication required) - with user-based rate limiting
     let protected_routes = Router::new()
+        // Basic CRUD operations
         .route("/products", get(product::get_all_products))
         .route("/products", post(product::create_product))
         .route("/products/:id", get(product::get_product))
         .route("/products/:id", put(product::update_product))
         .route("/products/:id", delete(product::delete_product))
-
+        
         // Search and filter endpoints
         .route("/products/search", get(product::search_products))
         .route("/products/category", get(product::get_products_by_category))

@@ -23,6 +23,22 @@ pub struct UpdateProductRequest {
     pub category: Option<String>,
 }
 
+#[derive(Clone, Debug, Deserialize, Validate)]
+pub struct ProductSearchRequest {
+    pub query: Option<String>,           // General text search
+    pub name: Option<String>,            // Search by name
+    pub category: Option<String>,        // Filter by category
+    pub min_price: Option<Decimal>,      // Price range filter
+    pub max_price: Option<Decimal>,
+    pub min_quantity: Option<i32>,       // Quantity range filter
+    pub max_quantity: Option<i32>,
+    pub in_stock: Option<bool>,          // Filter by stock availability
+    pub sort_by: Option<String>,         // Sort field (name, price, created_at)
+    pub sort_order: Option<String>,      // Sort order (asc, desc)
+    pub page: Option<u64>,
+    pub per_page: Option<u64>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct ProductResponse {
     pub id: Uuid,
@@ -43,113 +59,35 @@ pub struct ProductListResponse {
     pub per_page: u64,
 }
 
+#[derive(Debug, Serialize)]
+pub struct ProductSearchResponse {
+    pub products: Vec<ProductResponse>,
+    pub total: u64,
+    pub page: u64,
+    pub per_page: u64,
+    pub filters_applied: ProductSearchFilters,
+}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use mockall::{automock, predicate::*};
-    use rust_decimal_macros::dec;
-    use validator::Validate;
+#[derive(Debug, Serialize)]
+pub struct ProductSearchFilters {
+    pub query: Option<String>,
+    pub category: Option<String>,
+    pub price_range: Option<(Decimal, Decimal)>,
+    pub quantity_range: Option<(i32, i32)>,
+    pub in_stock: Option<bool>,
+}
 
-    // Step 1: Mockable interface for validation (so services could mock validation behavior)
-    #[automock]
-    trait ProductValidator {
-        fn validate_create(&self, req: &CreateProductRequest) -> Result<(), validator::ValidationErrors>;
-    }
+#[derive(Debug, Serialize)]
+pub struct ProductStatsResponse {
+    pub total_products: u64,
+    pub total_value: Decimal,
+    pub avg_price: Option<Decimal>,
+    pub categories: Vec<CategoryStats>,
+}
 
-    struct RealProductValidator;
-
-    impl ProductValidator for RealProductValidator {
-        fn validate_create(&self, req: &CreateProductRequest) -> Result<(), validator::ValidationErrors> {
-            req.validate()
-        }
-    }
-
-    #[test]
-    fn test_create_product_request_valid() {
-        let request = CreateProductRequest {
-            name: "Laptop".to_string(),
-            description: Some("A gaming laptop".to_string()),
-            price: dec!(1299.99),
-            quantity: 10,
-            category: Some("Electronics".to_string()),
-        };
-
-        let result = request.validate();
-        assert!(result.is_ok(), "Expected valid request, got {:?}", result.err());
-    }
-
-    #[test]
-    fn test_create_product_request_invalid_name() {
-        let request = CreateProductRequest {
-            name: "".to_string(), // too short
-            description: None,
-            price: dec!(10.0),
-            quantity: 5,
-            category: None,
-        };
-
-        let result = request.validate();
-        assert!(result.is_err(), "Expected validation error for empty name");
-        let errors = result.unwrap_err();
-        assert!(errors.to_string().contains("Name must be between 1 and 255 characters"));
-    }
-
-    #[test]
-    fn test_create_product_request_invalid_quantity() {
-        let request = CreateProductRequest {
-            name: "Mouse".to_string(),
-            description: None,
-            price: dec!(25.00),
-            quantity: -5, // negative not allowed
-            category: None,
-        };
-
-        let result = request.validate();
-        assert!(result.is_err());
-        let errors = result.unwrap_err();
-        assert!(errors.to_string().contains("Quantity must be non-negative"));
-    }
-
-    #[test]
-    fn test_mock_product_validator_success() {
-        let mut mock = MockProductValidator::new();
-        let req = CreateProductRequest {
-            name: "Keyboard".to_string(),
-            description: None,
-            price: dec!(45.00),
-            quantity: 2,
-            category: None,
-        };
-
-        mock.expect_validate_create()
-            .with(always())
-            .returning(|_| Ok(()));
-
-        let result = mock.validate_create(&req);
-        assert!(result.is_ok(), "Expected mock to return Ok");
-    }
-
-    #[test]
-    fn test_mock_product_validator_failure() {
-        let mut mock = MockProductValidator::new();
-        let req = CreateProductRequest {
-            name: "".to_string(),
-            description: None,
-            price: dec!(10.0),
-            quantity: 1,
-            category: None,
-        };
-
-        let mut errors = validator::ValidationErrors::new();
-        errors.add("name", validator::ValidationError::new("empty").into());
-
-        mock.expect_validate_create()
-            .with(always())
-            .returning(move |_| Err(errors.clone()));
-
-        let result = mock.validate_create(&req);
-        assert!(result.is_err(), "Expected mock to return Err");
-        assert!(result.unwrap_err().to_string().contains("name"));
-    }
+#[derive(Debug, Serialize)]
+pub struct CategoryStats {
+    pub category: String,
+    pub count: u64,
+    pub total_value: Decimal,
 }

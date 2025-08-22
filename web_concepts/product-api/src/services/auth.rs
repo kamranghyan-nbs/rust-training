@@ -1,29 +1,38 @@
 use crate::{
-    entities::{prelude::*, user},
-    error::AppError,
+    error::{AppError, not_found_error, conflict_error},
     models::{AuthResponse, LoginRequest, RegisterRequest, UserResponse},
+    repository::auth::AuthRepositoryTrait,
     utils::{create_jwt, hash_password, verify_password},
 };
-use sea_orm::{prelude::*, ActiveModelTrait, Set};
 use std::sync::Arc;
 
-pub struct AuthService;
+pub struct AuthService<T: AuthRepositoryTrait> {
+    auth_repository: Arc<T>,
+}
 
-impl AuthService {
+impl<T: AuthRepositoryTrait> AuthService<T> {
+    pub fn new(auth_repository: Arc<T>) -> Self {
+        Self { auth_repository }
+    }
+
     pub async fn login(
-        db: &DatabaseConnection,
+        &self,
         config: Arc<crate::config::Config>,
         request: LoginRequest,
     ) -> Result<AuthResponse, AppError> {
-        let user = User::find()
-            .filter(user::Column::Username.eq(&request.username))
-            .one(db)
+        let user = self
+            .auth_repository
+            .find_by_username(&request.username)
             .await?
-            .ok_or(AppError::Unauthorized)?;
+            .ok_or_else(|| AppError::unauthorized_with_context(
+                format!("Invalid credentials for user: {}", request.username)
+            ))?;
 
         let is_valid = verify_password(&request.password, &user.password_hash)?;
         if !is_valid {
-            return Err(AppError::Unauthorized);
+            return Err(AppError::unauthorized_with_context(
+                "Invalid password provided".to_string()
+            ));
         }
 
         let token = create_jwt(
@@ -44,38 +53,30 @@ impl AuthService {
     }
 
     pub async fn register(
-        db: &DatabaseConnection,
+        &self,
         config: Arc<crate::config::Config>,
         request: RegisterRequest,
     ) -> Result<AuthResponse, AppError> {
         // Check if user already exists
-        let existing_user = User::find()
-            .filter(
-                user::Column::Username
-                    .eq(&request.username)
-                    .or(user::Column::Email.eq(&request.email)),
-            )
-            .one(db)
+        let existing_user = self
+            .auth_repository
+            .find_by_username_or_email(&request.username, &request.email)
             .await?;
 
         if existing_user.is_some() {
-            return Err(AppError::Conflict("User already exists".to_string()));
+            return Err(conflict_error(
+                "user",
+                &format!("User with username '{}' or email '{}' already exists", 
+                    request.username, request.email)
+            ));
         }
 
         let password_hash = hash_password(&request.password)?;
-        let user_id = uuid::Uuid::new_v4();
-        let now = chrono::Utc::now();
 
-        let new_user = user::ActiveModel {
-            id: Set(user_id),
-            username: Set(request.username.clone()),
-            email: Set(request.email.clone()),
-            password_hash: Set(password_hash),
-            created_at: Set(now),
-            updated_at: Set(now),
-        };
-
-        let user = new_user.insert(db).await?;
+        let user = self
+            .auth_repository
+            .create_user(request.username.clone(), request.email.clone(), password_hash)
+            .await?;
 
         let token = create_jwt(
             &user.id.to_string(),
@@ -94,140 +95,3 @@ impl AuthService {
         })
     }
 }
-
-
-
-// use crate::{
-//     entities::{prelude::*, user},
-//     error::AppError,
-//     models::{AuthResponse, LoginRequest, RegisterRequest, UserResponse},
-//     utils::{create_jwt, hash_password, verify_password},
-// };
-// use sea_orm::{prelude::*, ActiveModelTrait, Set};
-// use std::sync::Arc;
-
-// pub struct AuthService;
-
-// impl AuthService {
-//     #[cfg(not(feature = "mock"))]
-//     pub async fn login(
-//         db: &DatabaseConnection,
-//         config: Arc<crate::config::Config>,
-//         request: LoginRequest,
-//     ) -> Result<AuthResponse, AppError> {
-//         let user = User::find()
-//             .filter(user::Column::Username.eq(&request.username))
-//             .one(db)
-//             .await?
-//             .ok_or(AppError::Unauthorized)?;
-
-//         let is_valid = verify_password(&request.password, &user.password_hash)?;
-//         if !is_valid {
-//             return Err(AppError::Unauthorized);
-//         }
-
-//         let token = create_jwt(
-//             &user.id.to_string(),
-//             &user.username,
-//             &config.jwt_secret,
-//             config.jwt_expiration,
-//         )?;
-
-//         Ok(AuthResponse {
-//             token,
-//             user: UserResponse {
-//                 id: user.id,
-//                 username: user.username,
-//                 email: user.email,
-//             },
-//         })
-//     }
-
-//     #[cfg(feature = "mock")]
-//     pub async fn login(
-//         _db: &(),
-//         config: Arc<crate::config::Config>,
-//         request: LoginRequest,
-//     ) -> Result<AuthResponse, AppError> {
-//         if request.username == "admin" && request.password == "password" {
-//             Ok(AuthResponse {
-//                 token: create_jwt("1", "admin", &config.jwt_secret, config.jwt_expiration)?,
-//                 user: UserResponse {
-//                     id: uuid::Uuid::new_v4(),
-//                     username: "admin".to_string(),
-//                     email: "admin@example.com".to_string(),
-//                 },
-//             })
-//         } else {
-//             Err(AppError::Unauthorized)
-//         }
-//     }
-
-//     #[cfg(not(feature = "mock"))]
-//     pub async fn register(
-//         db: &DatabaseConnection,
-//         config: Arc<crate::config::Config>,
-//         request: RegisterRequest,
-//     ) -> Result<AuthResponse, AppError> {
-//         let existing_user = User::find()
-//             .filter(
-//                 user::Column::Username
-//                     .eq(&request.username)
-//                     .or(user::Column::Email.eq(&request.email)),
-//             )
-//             .one(db)
-//             .await?;
-
-//         if existing_user.is_some() {
-//             return Err(AppError::Conflict("User already exists".to_string()));
-//         }
-
-//         let password_hash = hash_password(&request.password)?;
-//         let user_id = uuid::Uuid::new_v4();
-//         let now = chrono::Utc::now();
-
-//         let new_user = user::ActiveModel {
-//             id: Set(user_id),
-//             username: Set(request.username.clone()),
-//             email: Set(request.email.clone()),
-//             password_hash: Set(password_hash),
-//             created_at: Set(now),
-//             updated_at: Set(now),
-//         };
-
-//         let user = new_user.insert(db).await?;
-
-//         let token = create_jwt(
-//             &user.id.to_string(),
-//             &user.username,
-//             &config.jwt_secret,
-//             config.jwt_expiration,
-//         )?;
-
-//         Ok(AuthResponse {
-//             token,
-//             user: UserResponse {
-//                 id: user.id,
-//                 username: user.username,
-//                 email: user.email,
-//             },
-//         })
-//     }
-
-//     #[cfg(feature = "mock")]
-//     pub async fn register(
-//         _db: &(),
-//         config: Arc<crate::config::Config>,
-//         request: RegisterRequest,
-//     ) -> Result<AuthResponse, AppError> {
-//         Ok(AuthResponse {
-//             token: create_jwt("2", &request.username, &config.jwt_secret, config.jwt_expiration)?,
-//             user: UserResponse {
-//                 id: uuid::Uuid::new_v4(),
-//                 username: request.username.clone(),
-//                 email: request.email.clone(),
-//             },
-//         })
-//     }
-// }
-

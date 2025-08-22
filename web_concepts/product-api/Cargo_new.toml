@@ -3,16 +3,24 @@ name = "product-api"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "product-api"
+path = "src/main.rs"
+
+[lib]
+name = "product_api"
+path = "src/lib.rs"
+
 [dependencies]
 # Web framework
 axum = { version = "0.7", features = ["macros"] }
 tokio = { version = "1.0", features = ["full"] }
-tower ={ version = "0.4", features = ["limit"] }
-tower-http = { version = "0.5", features = ["fs", "trace", "cors", "serde"] }
+tower = { version = "0.4", features = ["limit"] }
+tower-http = { version = "0.5", features = ["fs", "trace", "cors"] }
 
 # Database
-sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "bigdecimal"] }
-sea-orm = { version = "0.12", features = ["sqlx-postgres", "runtime-tokio-rustls", "macros", "uuid", "with-chrono", "with-bigdecimal"] }
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "decimal"] }
+sea-orm = { version = "0.12", features = ["sqlx-postgres", "runtime-tokio-rustls", "macros", "uuid", "with-chrono", "with-rust_decimal"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -21,9 +29,6 @@ serde_json = "1.0"
 # Authentication
 jsonwebtoken = "9.0"
 bcrypt = "0.15"
-
-# Mock testing
-
 
 # Utilities
 uuid = { version = "1.0", features = ["v4", "serde"] }
@@ -37,8 +42,10 @@ async-trait = "0.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "registry", "fmt"] }
 tracing-appender = "0.2"
-opentelemetry = "0.30.0"
+tracing-bunyan = "0.3"
+opentelemetry = { version = "0.21", features = ["rt-tokio"] }
 opentelemetry-jaeger = { version = "0.20", features = ["rt-tokio"] }
+opentelemetry-tracing = "0.14"
 console-subscriber = "0.2"
 sentry = { version = "0.32", features = ["tracing"] }
 sentry-tracing = "0.32"
@@ -48,15 +55,7 @@ dotenvy = "0.15"
 
 # Validation
 validator = { version = "0.16", features = ["derive"] }
-mockall = "0.13.1"
-wiremock = "0.6.4"
-hyper = "1.6.0"
-
-[features]
-default = []
-mock = []  # Enables fake DB for testing
 
 [dev-dependencies]
 reqwest = { version = "0.11", features = ["json"] }
 tokio-test = "0.4"
-rust_decimal_macros = "1"

@@ -15,10 +15,16 @@ pub async fn auth_middleware(
         .headers()
         .get("Authorization")
         .and_then(|h| h.to_str().ok())
-        .ok_or(AppError::Unauthorized)?;
+        .ok_or(AppError::Unauthorized {
+            context: Some("Missing or invalid token".to_string()), // or None
+            error_id: uuid::Uuid::new_v4(),
+        })?;
 
     if !auth_header.starts_with("Bearer ") {
-        return Err(AppError::Unauthorized);
+        return Err(AppError::Unauthorized {
+            context: Some("Missing or invalid token".to_string()), // or None
+            error_id: uuid::Uuid::new_v4(),
+        });
     }
 
     let token = &auth_header[7..]; // Remove "Bearer " prefix
