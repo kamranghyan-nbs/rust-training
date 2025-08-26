@@ -1,5 +1,5 @@
 use crate::{
-    entities::{prelude::*, user},
+    entities::{prelude::*, user, user::UserRole},
     error::AppError,
 };
 use async_trait::async_trait;
@@ -9,10 +9,18 @@ use uuid::Uuid;
 #[async_trait]
 pub trait AuthRepositoryTrait {
     async fn find_by_username(&self, username: &str) -> Result<Option<user::Model>, AppError>;
-    async fn find_by_email(&self, email: &str) -> Result<Option<user::Model>, AppError>;
-    async fn find_by_username_or_email(&self, username: &str, email: &str) -> Result<Option<user::Model>, AppError>;
-    async fn create_user(&self, username: String, email: String, password_hash: String) -> Result<user::Model, AppError>;
-    async fn find_by_id(&self, user_id: Uuid) -> Result<Option<user::Model>, AppError>;
+    async fn find_by_username_or_email(
+        &self,
+        username: &str,
+        email: &str,
+    ) -> Result<Option<user::Model>, AppError>;
+    async fn create_user(
+        &self,
+        username: String,
+        email: String,
+        password_hash: String,
+        role: UserRole,
+    ) -> Result<user::Model, AppError>;
 }
 
 #[derive(Clone)]
@@ -31,22 +39,18 @@ impl AuthRepositoryTrait for AuthRepository {
     async fn find_by_username(&self, username: &str) -> Result<Option<user::Model>, AppError> {
         let user = User::find()
             .filter(user::Column::Username.eq(username))
+            .filter(user::Column::IsActive.eq(true)) // Only return active users
             .one(&self.db)
             .await?;
-        
+
         Ok(user)
     }
 
-    async fn find_by_email(&self, email: &str) -> Result<Option<user::Model>, AppError> {
-        let user = User::find()
-            .filter(user::Column::Email.eq(email))
-            .one(&self.db)
-            .await?;
-        
-        Ok(user)
-    }
-
-    async fn find_by_username_or_email(&self, username: &str, email: &str) -> Result<Option<user::Model>, AppError> {
+    async fn find_by_username_or_email(
+        &self,
+        username: &str,
+        email: &str,
+    ) -> Result<Option<user::Model>, AppError> {
         let user = User::find()
             .filter(
                 user::Column::Username
@@ -55,11 +59,17 @@ impl AuthRepositoryTrait for AuthRepository {
             )
             .one(&self.db)
             .await?;
-        
+
         Ok(user)
     }
 
-    async fn create_user(&self, username: String, email: String, password_hash: String) -> Result<user::Model, AppError> {
+    async fn create_user(
+        &self,
+        username: String,
+        email: String,
+        password_hash: String,
+        role: UserRole,
+    ) -> Result<user::Model, AppError> {
         let user_id = Uuid::new_v4();
         let now = chrono::Utc::now();
 
@@ -68,19 +78,13 @@ impl AuthRepositoryTrait for AuthRepository {
             username: Set(username),
             email: Set(email),
             password_hash: Set(password_hash),
+            role: Set(role),
+            is_active: Set(true),
             created_at: Set(now),
             updated_at: Set(now),
         };
 
         let user = new_user.insert(&self.db).await?;
-        Ok(user)
-    }
-
-    async fn find_by_id(&self, user_id: Uuid) -> Result<Option<user::Model>, AppError> {
-        let user = User::find_by_id(user_id)
-            .one(&self.db)
-            .await?;
-        
         Ok(user)
     }
 }

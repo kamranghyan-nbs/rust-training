@@ -4,22 +4,19 @@ use axum::{
     response::Response,
 };
 use std::time::Instant;
-use tracing::{info, warn, error, Span};
+use tracing::{error, info, warn, Span};
 use uuid::Uuid;
 
 // Async request logging middleware with structured data
-pub async fn request_logging_middleware(
-    request: Request,
-    next: Next,
-) -> Response {
+pub async fn request_logging_middleware(request: Request, next: Next) -> Response {
     let start = Instant::now();
     let method = request.method().clone();
     let uri = request.uri().clone();
     let version = request.version();
-    
+
     // Generate unique request ID for correlation
     let request_id = Uuid::new_v4();
-    
+
     // Extract matched path for cleaner logging (removes query params)
     let matched_path = request
         .extensions()
@@ -52,17 +49,15 @@ pub async fn request_logging_middleware(
     let _enter = request_span.enter();
 
     // Log the incoming request
-    info!(
-        "📥 HTTP request received"
-    );
+    info!("📥 HTTP request received");
 
     // Process the request
     let response = next.run(request).await;
-    
+
     // Calculate duration
     let duration = start.elapsed();
     let status = response.status();
-    
+
     // Extract response size if available
     let response_size = response
         .headers()
@@ -113,10 +108,9 @@ pub async fn request_logging_middleware(
 
     // Add request ID to response headers for correlation
     let mut response = response;
-    response.headers_mut().insert(
-        "x-request-id",
-        request_id.to_string().parse().unwrap(),
-    );
+    response
+        .headers_mut()
+        .insert("x-request-id", request_id.to_string().parse().unwrap());
 
     response
 }
@@ -226,34 +220,56 @@ impl PerformanceTimer {
 // Structured error logging
 pub fn log_application_error(error: &crate::error::AppError, context: &str) {
     match error {
-        crate::error::AppError::DatabaseError(db_err) => {
+        crate::error::AppError::DatabaseError {
+            operation,
+            table,
+            details,
+            error_id,
+        } => {
             error!(
                 error_type = "database_error",
-                error = %db_err,
-                context = %context,
-                "💾 Database error occurred"
+                operation = ?operation,
+                table = ?table,
+                details = ?details,
+                error_id = %error_id,
+                context = ?context,
+                "Database error occurred"
             );
         }
-        crate::error::AppError::ValidationError(validation_err) => {
+        crate::error::AppError::ValidationError {
+            field,
+            message,
+            error_id,
+        } => {
             warn!(
                 error_type = "validation_error",
-                error = %validation_err,
-                context = %context,
-                "📋 Validation error occurred"
+                field = ?field,
+                message = ?message,
+                error_id = %error_id,
+                context = ?context,
+                "Validation error occurred"
             );
         }
-        crate::error::AppError::Unauthorized => {
+        crate::error::AppError::Unauthorized { context, error_id } => {
             warn!(
                 error_type = "unauthorized",
-                context = %context,
-                "🔒 Unauthorized access attempt"
+                context = ?context,
+                error_id = %error_id,
+                "Unauthorized access attempt"
             );
         }
-        crate::error::AppError::NotFound => {
+        crate::error::AppError::NotFound {
+            resource_type,
+            resource_id,
+            error_id,
+        } => {
             info!(
                 error_type = "not_found",
+                resource_type = %resource_type,
+                resource_id = ?resource_id,
+                error_id = %error_id,
                 context = %context,
-                "🔍 Resource not found"
+                "Resource not found"
             );
         }
         _ => {
@@ -261,7 +277,7 @@ pub fn log_application_error(error: &crate::error::AppError, context: &str) {
                 error_type = "application_error",
                 error = %error,
                 context = %context,
-                "⚠️ Application error occurred"
+                "Application error occurred"
             );
         }
     }

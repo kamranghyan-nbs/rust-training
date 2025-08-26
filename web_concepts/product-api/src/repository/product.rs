@@ -1,22 +1,23 @@
 use crate::{
     entities::{prelude::*, product},
     error::AppError,
-    models::{CreateProductRequest, UpdateProductRequest, ProductSearchRequest, ProductStatsResponse, CategoryStats},
+    models::{
+        CategoryStats, CreateProductRequest, ProductSearchRequest, ProductStatsResponse,
+        UpdateProductRequest,
+    },
 };
 use async_trait::async_trait;
+use rust_decimal::Decimal;
 use sea_orm::{
-    prelude::*, ActiveModelTrait, Set, QueryOrder, PaginatorTrait, QueryFilter, QuerySelect,
-    FromQueryResult, ConnectionTrait, Statement, DatabaseBackend, Order,
+    prelude::*, ActiveModelTrait, DatabaseBackend, FromQueryResult,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
 };
 use uuid::Uuid;
-use rust_decimal::Decimal;
 
 //  **Custom Result Mapping** - FromQueryResult derive macro
 // These structs map raw SQL query results to Rust types
 #[derive(FromQueryResult)]
-struct ProductCount {
-    count: i64,
-}
+struct ProductCount {}
 
 #[derive(FromQueryResult)]
 struct CategoryStatsRaw {
@@ -35,18 +36,36 @@ struct ProductStatsRaw {
 #[async_trait]
 pub trait ProductRepositoryTrait {
     async fn create(&self, request: CreateProductRequest) -> Result<product::Model, AppError>;
-    async fn find_all(&self, page: Option<u64>, per_page: Option<u64>) -> Result<(Vec<product::Model>, u64), AppError>;
+    async fn find_all(
+        &self,
+        page: Option<u64>,
+        per_page: Option<u64>,
+    ) -> Result<(Vec<product::Model>, u64), AppError>;
     async fn find_by_id(&self, id: Uuid) -> Result<Option<product::Model>, AppError>;
-    async fn update(&self, id: Uuid, request: UpdateProductRequest) -> Result<product::Model, AppError>;
+    async fn update(
+        &self,
+        id: Uuid,
+        request: UpdateProductRequest,
+    ) -> Result<product::Model, AppError>;
     async fn delete(&self, id: Uuid) -> Result<bool, AppError>;
-    
     // Custom search queries demonstrating advanced SeaORM features
-    async fn search(&self, search_request: ProductSearchRequest) -> Result<(Vec<product::Model>, u64), AppError>;
+    async fn search(
+        &self,
+        search_request: ProductSearchRequest,
+    ) -> Result<(Vec<product::Model>, u64), AppError>;
     async fn find_by_category(&self, category: &str) -> Result<Vec<product::Model>, AppError>;
-    async fn find_by_price_range(&self, min_price: Decimal, max_price: Decimal) -> Result<Vec<product::Model>, AppError>;
+    async fn find_by_price_range(
+        &self,
+        min_price: Decimal,
+        max_price: Decimal,
+    ) -> Result<Vec<product::Model>, AppError>;
     async fn find_low_stock(&self, threshold: i32) -> Result<Vec<product::Model>, AppError>;
     async fn get_product_stats(&self) -> Result<ProductStatsResponse, AppError>;
-    async fn find_similar_products(&self, product_name: &str, limit: u64) -> Result<Vec<product::Model>, AppError>;
+    async fn find_similar_products(
+        &self,
+        product_name: &str,
+        limit: u64,
+    ) -> Result<Vec<product::Model>, AppError>;
     async fn get_trending_categories(&self, limit: u64) -> Result<Vec<CategoryStats>, AppError>;
 }
 
@@ -74,6 +93,8 @@ impl ProductRepositoryTrait for ProductRepository {
             price: Set(request.price),
             quantity: Set(request.quantity),
             category: Set(request.category),
+            created_by: Set(request.created_by),
+            updated_by: Set(request.updated_by),
             created_at: Set(now),
             updated_at: Set(now),
         };
@@ -83,7 +104,11 @@ impl ProductRepositoryTrait for ProductRepository {
     }
 
     //  **Pagination & Sorting** - Basic pagination with sorting
-    async fn find_all(&self, page: Option<u64>, per_page: Option<u64>) -> Result<(Vec<product::Model>, u64), AppError> {
+    async fn find_all(
+        &self,
+        page: Option<u64>,
+        per_page: Option<u64>,
+    ) -> Result<(Vec<product::Model>, u64), AppError> {
         let page = page.unwrap_or(1);
         let per_page = per_page.unwrap_or(10).min(100);
 
@@ -95,26 +120,28 @@ impl ProductRepositoryTrait for ProductRepository {
         // Get total count for pagination metadata
         let total = paginator.num_items().await?;
         // Fetch specific page (0-indexed internally)
-        let products = paginator
-            .fetch_page(page.saturating_sub(1))
-            .await?;
-
+        let products = paginator.fetch_page(page.saturating_sub(1)).await?;
         Ok((products, total))
     }
 
     async fn find_by_id(&self, id: Uuid) -> Result<Option<product::Model>, AppError> {
-        let product = Product::find_by_id(id)
-            .one(&self.db)
-            .await?;
-        
+        let product = Product::find_by_id(id).one(&self.db).await?;
         Ok(product)
     }
 
-    async fn update(&self, id: Uuid, request: UpdateProductRequest) -> Result<product::Model, AppError> {
+    async fn update(
+        &self,
+        id: Uuid,
+        request: UpdateProductRequest,
+    ) -> Result<product::Model, AppError> {
         let product = Product::find_by_id(id)
             .one(&self.db)
             .await?
-            .ok_or(AppError::NotFound)?;
+            .ok_or(AppError::NotFound {
+                resource_type: "Product".to_string(),
+                resource_id: Some(id.to_string()),
+                error_id: uuid::Uuid::new_v4(),
+            })?;
 
         let mut active_product: product::ActiveModel = product.into();
 
@@ -146,7 +173,10 @@ impl ProductRepositoryTrait for ProductRepository {
 
     //  **Dynamic Query Building** + **Complex WHERE Clauses** + **Range Queries** + **Text Search** + **Pagination & Sorting**
     // This method demonstrates the most advanced SeaORM query building features
-    async fn search(&self, search_request: ProductSearchRequest) -> Result<(Vec<product::Model>, u64), AppError> {
+    async fn search(
+        &self,
+        search_request: ProductSearchRequest,
+    ) -> Result<(Vec<product::Model>, u64), AppError> {
         let page = search_request.page.unwrap_or(1);
         let per_page = search_request.per_page.unwrap_or(10).min(100);
 
@@ -156,11 +186,12 @@ impl ProductRepositoryTrait for ProductRepository {
         //  **Text Search** - LIKE/ILIKE pattern matching with OR conditions
         //  **Complex WHERE Clauses** - Multiple conditions with AND/OR logic
         if let Some(search_text) = &search_request.query {
-            let search_pattern = format!("%{}%", search_text);
+            let search_pattern = format!("%{search_text}%");
             query = query.filter(
                 // OR condition: search in both name AND description
-                product::Column::Name.contains(&search_pattern)
-                    .or(product::Column::Description.contains(&search_pattern))
+                product::Column::Name
+                    .contains(&search_pattern)
+                    .or(product::Column::Description.contains(&search_pattern)),
             );
         }
 
@@ -199,7 +230,10 @@ impl ProductRepositoryTrait for ProductRepository {
         }
 
         //  **Pagination & Sorting** - Dynamic sorting based on user input
-        query = match (search_request.sort_by.as_deref(), search_request.sort_order.as_deref()) {
+        query = match (
+            search_request.sort_by.as_deref(),
+            search_request.sort_order.as_deref(),
+        ) {
             (Some("name"), Some("desc")) => query.order_by_desc(product::Column::Name),
             (Some("name"), _) => query.order_by_asc(product::Column::Name),
             (Some("price"), Some("desc")) => query.order_by_desc(product::Column::Price),
@@ -230,7 +264,11 @@ impl ProductRepositoryTrait for ProductRepository {
     }
 
     //  **Range Queries** - BETWEEN operation for price range
-    async fn find_by_price_range(&self, min_price: Decimal, max_price: Decimal) -> Result<Vec<product::Model>, AppError> {
+    async fn find_by_price_range(
+        &self,
+        min_price: Decimal,
+        max_price: Decimal,
+    ) -> Result<Vec<product::Model>, AppError> {
         let products = Product::find()
             .filter(product::Column::Price.between(min_price, max_price)) // BETWEEN clause
             .order_by_asc(product::Column::Price) // Sort by price ascending
@@ -266,14 +304,17 @@ impl ProductRepositoryTrait for ProductRepository {
                 AVG(price) as avg_price                        -- AVG aggregation
             FROM products
             "#,
-            [] // No parameters for this query
+            [], // No parameters for this query
         );
 
         //  **Custom Result Mapping** - Map raw SQL results to custom struct
         let stats_result: ProductStatsRaw = ProductStatsRaw::find_by_statement(stats_query)
             .one(&self.db)
             .await?
-            .ok_or(AppError::InternalServerError)?;
+            .ok_or(AppError::InternalServerError {
+                context: Some("Database returned None".to_string()), // or None
+                error_id: uuid::Uuid::new_v4(),
+            })?;
 
         //  **Raw SQL Integration** + **Aggregations** - Category-wise statistics
         let category_stats_query = Statement::from_sql_and_values(
@@ -288,13 +329,14 @@ impl ProductRepositoryTrait for ProductRepository {
             GROUP BY category                                  -- GROUP BY for aggregation
             ORDER BY count DESC                                -- Sort by count
             "#,
-            []
+            [],
         );
 
         //  **Custom Result Mapping** - Map aggregated results to struct
-        let category_results: Vec<CategoryStatsRaw> = CategoryStatsRaw::find_by_statement(category_stats_query)
-            .all(&self.db)
-            .await?;
+        let category_results: Vec<CategoryStatsRaw> =
+            CategoryStatsRaw::find_by_statement(category_stats_query)
+                .all(&self.db)
+                .await?;
 
         // Transform raw results into response model
         let categories = category_results
@@ -317,9 +359,12 @@ impl ProductRepositoryTrait for ProductRepository {
     }
 
     //  **Text Search** - Fuzzy text search using LIKE pattern matching
-    async fn find_similar_products(&self, product_name: &str, limit: u64) -> Result<Vec<product::Model>, AppError> {
-        let search_pattern = format!("%{}%", product_name); // Create LIKE pattern
-        
+    async fn find_similar_products(
+        &self,
+        product_name: &str,
+        limit: u64,
+    ) -> Result<Vec<product::Model>, AppError> {
+        let search_pattern = format!("%{product_name}%"); // Create LIKE pattern
         let products = Product::find()
             .filter(product::Column::Name.contains(&search_pattern)) // LIKE/ILIKE operation
             .limit(limit) // Limit results
@@ -349,7 +394,7 @@ impl ProductRepositoryTrait for ProductRepository {
             ORDER BY count DESC, total_value DESC             -- Multiple column sorting
             LIMIT $1                                           -- Dynamic limit parameter
             "#,
-            [limit.into()] // Parameterized query
+            [limit.into()], // Parameterized query
         );
 
         //  **Custom Result Mapping** - Map complex query results
@@ -367,32 +412,6 @@ impl ProductRepositoryTrait for ProductRepository {
                 })
             })
             .collect();
-
         Ok(categories)
     }
-
-    //  **Joins** (Ready for expansion) - Example of how joins would be implemented
-    // Note: This is a placeholder showing how SeaORM joins would work when you have related entities
-    /*
-    async fn find_products_with_reviews(&self) -> Result<Vec<(product::Model, Vec<review::Model>)>, AppError> {
-        // This would be used when you have a related Review entity
-        let products_with_reviews = Product::find()
-            .find_with_related(Review) // Join with related reviews table
-            .filter(review::Column::Rating.gte(4)) // Filter by review rating
-            .all(&self.db)
-            .await?;
-        
-        Ok(products_with_reviews)
-    }
-
-    async fn find_products_with_category_details(&self) -> Result<Vec<(product::Model, Option<category::Model>)>, AppError> {
-        // Left join with category table
-        let products_with_categories = Product::find()
-            .find_also_related(Category) // LEFT JOIN
-            .all(&self.db)
-            .await?;
-        
-        Ok(products_with_categories)
-    }
-    */
 }

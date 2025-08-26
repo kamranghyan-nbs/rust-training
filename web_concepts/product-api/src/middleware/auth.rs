@@ -1,7 +1,6 @@
-use crate::{utils::verify_jwt, AppState, AppError};
+use crate::{utils::verify_jwt, AppError, AppState};
 use axum::{
     extract::{Request, State},
-    http::HeaderValue,
     middleware::Next,
     response::Response,
 };

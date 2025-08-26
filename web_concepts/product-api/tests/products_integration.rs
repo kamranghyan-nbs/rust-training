@@ -1,9 +1,9 @@
-use wiremock::matchers::{method, path};
-use wiremock::{Mock, MockServer, ResponseTemplate};
-use serde_json::json;
 use reqwest::Client;
 use rust_decimal_macros::dec;
+use serde_json::json;
 use uuid::Uuid;
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[tokio::test]
 async fn test_create_product_via_mock() {
@@ -24,10 +24,7 @@ async fn test_create_product_via_mock() {
 
     Mock::given(method("POST"))
         .and(path("/products"))
-        .respond_with(
-            ResponseTemplate::new(201)
-                .set_body_json(&created_product)
-        )
+        .respond_with(ResponseTemplate::new(201).set_body_json(&created_product))
         .mount(&mock_server)
         .await;
 
@@ -75,10 +72,7 @@ async fn test_list_products_via_mock() {
 
     Mock::given(method("GET"))
         .and(path("/products"))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_json(&product_list)
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(&product_list))
         .mount(&mock_server)
         .await;
 
@@ -93,7 +87,6 @@ async fn test_list_products_via_mock() {
     let body: serde_json::Value = res.json().await.unwrap();
     assert_eq!(body["total"], 1);
 }
-
 
 #[tokio::test]
 async fn test_get_product_by_id() {

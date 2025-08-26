@@ -100,3 +100,28 @@ dev: fmt clippy test build
 # Create .env file from example
 env:
 	cp .env.example .env
+
+# Lint, Build, Test, Audit, Deny, Geiger
+# cargo install cargo-audit
+# cargo install cargo-deny
+# cargo install cargo-geiger
+lint:
+	cargo fmt --all -- --check
+	cargo clippy --all-targets --all-features -- -D warnings
+
+build:
+	cargo build --all-targets --all-features
+
+test:
+	cargo test --all
+
+audit:
+	cargo audit
+
+deny:
+	cargo deny check
+
+geiger:
+	cargo geiger
+
+check-all: lint build test audit deny geiger

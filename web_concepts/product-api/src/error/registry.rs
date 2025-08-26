@@ -9,6 +9,7 @@ pub struct ErrorDefinition {
     pub code: &'static str,
     pub message: &'static str,
     pub user_message: &'static str, // User-friendly message
+    #[serde(skip)]
     pub status_code: StatusCode,
     pub category: ErrorCategory,
     pub severity: ErrorSeverity,
@@ -36,7 +37,7 @@ impl ErrorRegistry {
                 documentation_url: Some("/docs/errors#auth-unauthorized"),
             },
 
-            AppError::Forbidden { resource, .. } => ErrorDefinition {
+            AppError::Forbidden { .. } => ErrorDefinition {
                 code: "AUTH_FORBIDDEN",
                 message: "Access to resource is forbidden",
                 user_message: "You don't have permission to access this resource",
@@ -82,7 +83,7 @@ impl ErrorRegistry {
             },
 
             // Resource Errors
-            AppError::NotFound { resource_type, .. } => ErrorDefinition {
+            AppError::NotFound { .. } => ErrorDefinition {
                 code: "RESOURCE_NOT_FOUND",
                 message: "Requested resource not found",
                 user_message: "The requested item could not be found",
@@ -93,7 +94,7 @@ impl ErrorRegistry {
                 documentation_url: Some("/docs/errors#resource-not-found"),
             },
 
-            AppError::Conflict { resource_type, .. } => ErrorDefinition {
+            AppError::Conflict { .. } => ErrorDefinition {
                 code: "RESOURCE_CONFLICT",
                 message: "Resource already exists",
                 user_message: "This item already exists. Please use a different name or identifier",
@@ -104,8 +105,8 @@ impl ErrorRegistry {
                 documentation_url: Some("/docs/errors#resource-conflict"),
             },
 
-            // Database Errors  
-            AppError::DatabaseError { operation, .. } => ErrorDefinition {
+            // Database Errors
+            AppError::DatabaseError { .. } => ErrorDefinition {
                 code: "DATABASE_ERROR",
                 message: "Database operation failed",
                 user_message: "A temporary issue occurred. Please try again later",
@@ -128,10 +129,11 @@ impl ErrorRegistry {
             },
 
             // External Service Errors
-            AppError::ExternalServiceError { service, .. } => ErrorDefinition {
+            AppError::ExternalServiceError { .. } => ErrorDefinition {
                 code: "EXTERNAL_SERVICE_ERROR",
                 message: "External service error",
-                user_message: "A dependent service is currently unavailable. Please try again later",
+                user_message:
+                    "A dependent service is currently unavailable. Please try again later",
                 status_code: StatusCode::BAD_GATEWAY,
                 category: ErrorCategory::ExternalService,
                 severity: ErrorSeverity::High,
@@ -140,7 +142,7 @@ impl ErrorRegistry {
             },
 
             // Rate Limiting
-            AppError::RateLimitExceeded { limit_type, .. } => ErrorDefinition {
+            AppError::RateLimitExceeded { .. } => ErrorDefinition {
                 code: "RATE_LIMIT_EXCEEDED",
                 message: "Rate limit exceeded",
                 user_message: "Too many requests. Please slow down and try again later",
@@ -152,7 +154,7 @@ impl ErrorRegistry {
             },
 
             // Business Logic Errors
-            AppError::BusinessRuleViolation { rule, .. } => ErrorDefinition {
+            AppError::BusinessRuleViolation { .. } => ErrorDefinition {
                 code: "BUSINESS_RULE_VIOLATION",
                 message: "Business rule violation",
                 user_message: "This action violates business rules",
@@ -163,7 +165,7 @@ impl ErrorRegistry {
                 documentation_url: Some("/docs/errors#business-rule-violation"),
             },
 
-            AppError::InsufficientPrivileges { required_role, .. } => ErrorDefinition {
+            AppError::InsufficientPrivileges { .. } => ErrorDefinition {
                 code: "INSUFFICIENT_PRIVILEGES",
                 message: "Insufficient privileges",
                 user_message: "You don't have the required permissions for this action",
@@ -186,7 +188,7 @@ impl ErrorRegistry {
                 documentation_url: Some("/docs/errors#internal-server-error"),
             },
 
-            AppError::ServiceUnavailable { service, .. } => ErrorDefinition {
+            AppError::ServiceUnavailable { .. } => ErrorDefinition {
                 code: "SERVICE_UNAVAILABLE",
                 message: "Service temporarily unavailable",
                 user_message: "Service is temporarily unavailable. Please try again later",
@@ -197,7 +199,7 @@ impl ErrorRegistry {
                 documentation_url: Some("/docs/errors#service-unavailable"),
             },
 
-            AppError::ConfigurationError { parameter, .. } => ErrorDefinition {
+            AppError::ConfigurationError { .. } => ErrorDefinition {
                 code: "CONFIGURATION_ERROR",
                 message: "Configuration error",
                 user_message: "Service configuration issue. Please contact support",
@@ -209,7 +211,7 @@ impl ErrorRegistry {
             },
 
             // I/O and Parsing Errors
-            AppError::IoError { operation, .. } => ErrorDefinition {
+            AppError::IoError { .. } => ErrorDefinition {
                 code: "IO_ERROR",
                 message: "Input/Output operation failed",
                 user_message: "File operation failed. Please try again",
@@ -220,7 +222,7 @@ impl ErrorRegistry {
                 documentation_url: Some("/docs/errors#io-error"),
             },
 
-            AppError::ParseError { data_type, .. } => ErrorDefinition {
+            AppError::ParseError { .. } => ErrorDefinition {
                 code: "PARSE_ERROR",
                 message: "Data parsing failed",
                 user_message: "Invalid data format. Please check your input",
@@ -232,7 +234,7 @@ impl ErrorRegistry {
             },
 
             // Crypto and Security Errors
-            AppError::CryptoError { operation, .. } => ErrorDefinition {
+            AppError::CryptoError { .. } => ErrorDefinition {
                 code: "CRYPTO_ERROR",
                 message: "Cryptographic operation failed",
                 user_message: "Security operation failed. Please try again",
@@ -256,7 +258,7 @@ impl ErrorRegistry {
     pub fn is_valid_error_code(code: &str) -> bool {
         // Implementation would check against all registered error codes
         // For now, basic validation
-        code.starts_with("AUTH_") 
+        code.starts_with("AUTH_")
             || code.starts_with("VALIDATION_")
             || code.starts_with("RESOURCE_")
             || code.starts_with("DATABASE_")
@@ -273,9 +275,13 @@ impl ErrorRegistry {
         match code {
             "AUTH_UNAUTHORIZED" => Some("Please log in to access this resource"),
             "AUTH_FORBIDDEN" => Some("You don't have permission to access this resource"),
-            "VALIDATION_FAILED" => Some("The information provided is invalid. Please check your input"),
+            "VALIDATION_FAILED" => {
+                Some("The information provided is invalid. Please check your input")
+            }
             "RESOURCE_NOT_FOUND" => Some("The requested item could not be found"),
-            "RATE_LIMIT_EXCEEDED" => Some("Too many requests. Please slow down and try again later"),
+            "RATE_LIMIT_EXCEEDED" => {
+                Some("Too many requests. Please slow down and try again later")
+            }
             _ => None,
         }
     }
@@ -296,7 +302,10 @@ pub fn validation_error(field_name: &str, message: &str) -> AppError {
 /// Helper function to create not found errors
 ///  USE THIS TO ADD NEW NOT FOUND ERRORS EASILY
 pub fn not_found_error(resource_type: &str, resource_id: Option<&str>) -> AppError {
-    AppError::not_found(resource_type.to_string(), resource_id.map(|s| s.to_string()))
+    AppError::not_found(
+        resource_type.to_string(),
+        resource_id.map(|s| s.to_string()),
+    )
 }
 
 /// Helper function to create conflict errors

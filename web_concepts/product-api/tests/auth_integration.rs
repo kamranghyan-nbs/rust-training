@@ -1,6 +1,6 @@
+use reqwest::Client;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
-use reqwest::Client;
 
 #[tokio::test]
 async fn test_register_user() {

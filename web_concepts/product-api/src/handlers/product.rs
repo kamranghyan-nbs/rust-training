@@ -1,6 +1,6 @@
 use crate::{
     error::AppError,
-    models::{CreateProductRequest, UpdateProductRequest, ProductSearchRequest},
+    models::{CreateProductRequest, ProductSearchRequest, UpdateProductRequest},
     repository::product::ProductRepository,
     services::ProductService,
     AppState,
@@ -11,11 +11,11 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use rust_decimal::Decimal;
 use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 use validator::Validate;
-use rust_decimal::Decimal;
 
 #[derive(Debug, Deserialize)]
 pub struct PaginationQuery {
@@ -58,7 +58,7 @@ pub async fn create_product(
 
     let product_repository = Arc::new(ProductRepository::new(state.db.clone()));
     let product_service = ProductService::new(product_repository);
-    
+
     let response = product_service.create_product(request).await?;
 
     Ok((StatusCode::CREATED, Json(response)))
@@ -70,8 +70,10 @@ pub async fn get_all_products(
 ) -> Result<impl IntoResponse, AppError> {
     let product_repository = Arc::new(ProductRepository::new(state.db.clone()));
     let product_service = ProductService::new(product_repository);
-    
-    let response = product_service.get_all_products(params.page, params.per_page).await?;
+
+    let response = product_service
+        .get_all_products(params.page, params.per_page)
+        .await?;
 
     Ok((StatusCode::OK, Json(response)))
 }
@@ -82,7 +84,7 @@ pub async fn get_product(
 ) -> Result<impl IntoResponse, AppError> {
     let product_repository = Arc::new(ProductRepository::new(state.db.clone()));
     let product_service = ProductService::new(product_repository);
-    
+
     let response = product_service.get_product(id).await?;
 
     Ok((StatusCode::OK, Json(response)))
@@ -97,7 +99,7 @@ pub async fn update_product(
 
     let product_repository = Arc::new(ProductRepository::new(state.db.clone()));
     let product_service = ProductService::new(product_repository);
-    
+
     let response = product_service.update_product(id, request).await?;
 
     Ok((StatusCode::OK, Json(response)))
@@ -109,7 +111,7 @@ pub async fn delete_product(
 ) -> Result<impl IntoResponse, AppError> {
     let product_repository = Arc::new(ProductRepository::new(state.db.clone()));
     let product_service = ProductService::new(product_repository);
-    
+
     product_service.delete_product(id).await?;
 
     Ok(StatusCode::NO_CONTENT)
@@ -126,7 +128,7 @@ pub async fn search_products(
 
     let product_repository = Arc::new(ProductRepository::new(state.db.clone()));
     let product_service = ProductService::new(product_repository);
-    
+
     let response = product_service.search_products(search_request).await?;
 
     Ok((StatusCode::OK, Json(response)))
@@ -139,8 +141,10 @@ pub async fn get_products_by_category(
 ) -> Result<impl IntoResponse, AppError> {
     let product_repository = Arc::new(ProductRepository::new(state.db.clone()));
     let product_service = ProductService::new(product_repository);
-    
-    let response = product_service.get_products_by_category(&params.category).await?;
+
+    let response = product_service
+        .get_products_by_category(&params.category)
+        .await?;
 
     Ok((StatusCode::OK, Json(response)))
 }
@@ -152,8 +156,10 @@ pub async fn get_products_by_price_range(
 ) -> Result<impl IntoResponse, AppError> {
     let product_repository = Arc::new(ProductRepository::new(state.db.clone()));
     let product_service = ProductService::new(product_repository);
-    
-    let response = product_service.get_products_by_price_range(params.min_price, params.max_price).await?;
+
+    let response = product_service
+        .get_products_by_price_range(params.min_price, params.max_price)
+        .await?;
 
     Ok((StatusCode::OK, Json(response)))
 }
@@ -167,7 +173,7 @@ pub async fn get_low_stock_products(
 
     let product_repository = Arc::new(ProductRepository::new(state.db.clone()));
     let product_service = ProductService::new(product_repository);
-    
+
     let response = product_service.get_low_stock_products(threshold).await?;
 
     Ok((StatusCode::OK, Json(response)))
@@ -179,7 +185,7 @@ pub async fn get_product_stats(
 ) -> Result<impl IntoResponse, AppError> {
     let product_repository = Arc::new(ProductRepository::new(state.db.clone()));
     let product_service = ProductService::new(product_repository);
-    
+
     let response = product_service.get_product_stats().await?;
 
     Ok((StatusCode::OK, Json(response)))
@@ -194,8 +200,10 @@ pub async fn get_similar_products(
 
     let product_repository = Arc::new(ProductRepository::new(state.db.clone()));
     let product_service = ProductService::new(product_repository);
-    
-    let response = product_service.get_similar_products(&params.name, limit).await?;
+
+    let response = product_service
+        .get_similar_products(&params.name, limit)
+        .await?;
 
     Ok((StatusCode::OK, Json(response)))
 }
@@ -209,7 +217,7 @@ pub async fn get_trending_categories(
 
     let product_repository = Arc::new(ProductRepository::new(state.db.clone()));
     let product_service = ProductService::new(product_repository);
-    
+
     let response = product_service.get_trending_categories(limit).await?;
 
     Ok((StatusCode::OK, Json(response)))

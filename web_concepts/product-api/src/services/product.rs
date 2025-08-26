@@ -1,8 +1,8 @@
 use crate::{
     error::AppError,
     models::{
-        CreateProductRequest, ProductListResponse, ProductResponse, UpdateProductRequest,
-        ProductSearchRequest, ProductSearchResponse, ProductSearchFilters, ProductStatsResponse,
+        CreateProductRequest, ProductListResponse, ProductResponse, ProductSearchFilters,
+        ProductSearchRequest, ProductSearchResponse, ProductStatsResponse, UpdateProductRequest,
     },
     repository::product::ProductRepositoryTrait,
 };
@@ -34,12 +34,12 @@ impl<T: ProductRepositoryTrait> ProductService<T> {
         let page = page.unwrap_or(1);
         let per_page = per_page.unwrap_or(10).min(100);
 
-        let (products, total) = self.product_repository.find_all(Some(page), Some(per_page)).await?;
+        let (products, total) = self
+            .product_repository
+            .find_all(Some(page), Some(per_page))
+            .await?;
 
-        let products = products
-            .into_iter()
-            .map(ProductResponse::from)
-            .collect();
+        let products = products.into_iter().map(ProductResponse::from).collect();
 
         Ok(ProductListResponse {
             products,
@@ -49,10 +49,7 @@ impl<T: ProductRepositoryTrait> ProductService<T> {
         })
     }
 
-    pub async fn get_product(
-        &self,
-        product_id: Uuid,
-    ) -> Result<ProductResponse, AppError> {
+    pub async fn get_product(&self, product_id: Uuid) -> Result<ProductResponse, AppError> {
         let product = self
             .product_repository
             .find_by_id(product_id)
@@ -75,12 +72,8 @@ impl<T: ProductRepositoryTrait> ProductService<T> {
         Ok(ProductResponse::from(updated_product))
     }
 
-    pub async fn delete_product(
-        &self,
-        product_id: Uuid,
-    ) -> Result<(), AppError> {
+    pub async fn delete_product(&self, product_id: Uuid) -> Result<(), AppError> {
         let deleted = self.product_repository.delete(product_id).await?;
-        
         if !deleted {
             return Err(AppError::NotFound {
                 resource_type: "Product".to_string(),
@@ -100,12 +93,12 @@ impl<T: ProductRepositoryTrait> ProductService<T> {
         let page = search_request.page.unwrap_or(1);
         let per_page = search_request.per_page.unwrap_or(10).min(100);
 
-        let (products, total) = self.product_repository.search(search_request.clone()).await?;
+        let (products, total) = self
+            .product_repository
+            .search(search_request.clone())
+            .await?;
 
-        let products = products
-            .into_iter()
-            .map(ProductResponse::from)
-            .collect();
+        let products = products.into_iter().map(ProductResponse::from).collect();
 
         // Build filters applied summary
         let filters_applied = ProductSearchFilters {
@@ -136,11 +129,7 @@ impl<T: ProductRepositoryTrait> ProductService<T> {
         category: &str,
     ) -> Result<Vec<ProductResponse>, AppError> {
         let products = self.product_repository.find_by_category(category).await?;
-        
-        Ok(products
-            .into_iter()
-            .map(ProductResponse::from)
-            .collect())
+        Ok(products.into_iter().map(ProductResponse::from).collect())
     }
 
     pub async fn get_products_by_price_range(
@@ -148,12 +137,11 @@ impl<T: ProductRepositoryTrait> ProductService<T> {
         min_price: rust_decimal::Decimal,
         max_price: rust_decimal::Decimal,
     ) -> Result<Vec<ProductResponse>, AppError> {
-        let products = self.product_repository.find_by_price_range(min_price, max_price).await?;
-        
-        Ok(products
-            .into_iter()
-            .map(ProductResponse::from)
-            .collect())
+        let products = self
+            .product_repository
+            .find_by_price_range(min_price, max_price)
+            .await?;
+        Ok(products.into_iter().map(ProductResponse::from).collect())
     }
 
     pub async fn get_low_stock_products(
@@ -161,11 +149,7 @@ impl<T: ProductRepositoryTrait> ProductService<T> {
         threshold: i32,
     ) -> Result<Vec<ProductResponse>, AppError> {
         let products = self.product_repository.find_low_stock(threshold).await?;
-        
-        Ok(products
-            .into_iter()
-            .map(ProductResponse::from)
-            .collect())
+        Ok(products.into_iter().map(ProductResponse::from).collect())
     }
 
     pub async fn get_product_stats(&self) -> Result<ProductStatsResponse, AppError> {
@@ -177,12 +161,11 @@ impl<T: ProductRepositoryTrait> ProductService<T> {
         product_name: &str,
         limit: u64,
     ) -> Result<Vec<ProductResponse>, AppError> {
-        let products = self.product_repository.find_similar_products(product_name, limit).await?;
-        
-        Ok(products
-            .into_iter()
-            .map(ProductResponse::from)
-            .collect())
+        let products = self
+            .product_repository
+            .find_similar_products(product_name, limit)
+            .await?;
+        Ok(products.into_iter().map(ProductResponse::from).collect())
     }
 
     pub async fn get_trending_categories(

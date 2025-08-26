@@ -5,9 +5,7 @@ use tracing::info;
 use tracing_appender::{non_blocking, rolling};
 use tracing_subscriber::{
     fmt::{self, format::FmtSpan},
-    layer::SubscriberExt,
-    util::SubscriberInitExt,
-    EnvFilter, Layer, Registry,
+    Layer, Registry,
 };
 
 pub struct LoggingConfig {
@@ -22,9 +20,9 @@ pub struct LoggingConfig {
 
 #[derive(Debug, Clone)]
 pub enum LogFormat {
-    Pretty,    // Human-readable for development
-    Json,      // Structured JSON for production
-    Compact,   // Compact format for resource-constrained environments
+    Pretty,  // Human-readable for development
+    Json,    // Structured JSON for production
+    Compact, // Compact format for resource-constrained environments
 }
 
 #[derive(Debug, Clone)]
@@ -51,7 +49,7 @@ pub enum FileRotation {
 impl LoggingConfig {
     pub fn from_env() -> Result<Self, AppError> {
         let level = env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
-        
+
         let format = match env::var("LOG_FORMAT").as_deref() {
             Ok("json") => LogFormat::Json,
             Ok("compact") => LogFormat::Compact,
@@ -67,7 +65,8 @@ impl LoggingConfig {
         let file_config = if matches!(output, LogOutput::File | LogOutput::Both) {
             Some(FileConfig {
                 directory: env::var("LOG_DIR").unwrap_or_else(|_| "./logs".to_string()),
-                file_name_prefix: env::var("LOG_FILE_PREFIX").unwrap_or_else(|_| "product-api".to_string()),
+                file_name_prefix: env::var("LOG_FILE_PREFIX")
+                    .unwrap_or_else(|_| "product-api".to_string()),
                 rotation: match env::var("LOG_ROTATION").as_deref() {
                     Ok("hourly") => FileRotation::Hourly,
                     Ok("never") => FileRotation::Never,
@@ -108,26 +107,26 @@ pub struct LoggingGuards {
 
 pub async fn init_async_logging() -> Result<LoggingGuards, AppError> {
     let config = LoggingConfig::from_env()?;
-    
+
     info!("Initializing async logging system...");
     info!("Log level: {}", config.level);
     info!("Log format: {:?}", config.format);
     info!("Log output: {:?}", config.output);
 
     // Create the base registry
-    let registry = Registry::default();
+    // let registry = Registry::default();
 
     // Initialize guards to keep async writers alive
     let mut console_guard = None;
     let mut file_guard = None;
 
     // Create env filter
-    let env_filter = EnvFilter::try_from_default_env()
-        .or_else(|_| EnvFilter::try_new(&config.level))
-        .map_err(|e| AppError::BadRequest {
-            message: format!("Invalid log level: {}", e),
-            error_id: uuid::Uuid::new_v4(),
-        })?;
+    // let env_filter = EnvFilter::try_from_default_env()
+    //     .or_else(|_| EnvFilter::try_new(&config.level))
+    //     .map_err(|e| AppError::BadRequest {
+    //         message: format!("Invalid log level: {}", e),
+    //         error_id: uuid::Uuid::new_v4(),
+    //     })?;
 
     // Build the subscriber with different layers
     let mut layers: Vec<Box<dyn Layer<Registry> + Send + Sync>> = Vec::new();
@@ -146,14 +145,14 @@ pub async fn init_async_logging() -> Result<LoggingGuards, AppError> {
                 .with_thread_ids(true)
                 .with_thread_names(true)
                 .boxed(),
-            
+
             LogFormat::Json => fmt::layer()
                 .with_writer(console_writer)
                 .json()
                 .with_current_span(true)
                 .with_span_list(true)
                 .boxed(),
-            
+
             LogFormat::Compact => fmt::layer()
                 .with_writer(console_writer)
                 .compact()
@@ -167,9 +166,16 @@ pub async fn init_async_logging() -> Result<LoggingGuards, AppError> {
     // File Layer (if needed)
     if let Some(file_config) = &config.file_config {
         let file_appender = match file_config.rotation {
-            FileRotation::Hourly => rolling::hourly(&file_config.directory, &file_config.file_name_prefix),
-            FileRotation::Daily => rolling::daily(&file_config.directory, &file_config.file_name_prefix),
-            FileRotation::Never => rolling::never(&file_config.directory, &format!("{}.log", file_config.file_name_prefix)),
+            FileRotation::Hourly => {
+                rolling::hourly(&file_config.directory, &file_config.file_name_prefix)
+            }
+            FileRotation::Daily => {
+                rolling::daily(&file_config.directory, &file_config.file_name_prefix)
+            }
+            FileRotation::Never => rolling::never(
+                &file_config.directory,
+                format!("{}.log", file_config.file_name_prefix),
+            ),
         };
 
         let (file_writer, guard) = non_blocking(file_appender);
@@ -184,8 +190,11 @@ pub async fn init_async_logging() -> Result<LoggingGuards, AppError> {
             .boxed();
 
         layers.push(file_layer);
-        
-        info!("File logging enabled: {}/{}", file_config.directory, file_config.file_name_prefix);
+
+        info!(
+            "File logging enabled: {}/{}",
+            file_config.directory, file_config.file_name_prefix
+        );
     }
 
     // Sentry Layer (for error reporting)
@@ -194,38 +203,21 @@ pub async fn init_async_logging() -> Result<LoggingGuards, AppError> {
             sentry_dsn.as_str(),
             sentry::ClientOptions {
                 release: sentry::release_name!(),
-                environment: Some(env::var("ENVIRONMENT").unwrap_or_else(|_| "development".into()).into()),
+                environment: Some(
+                    env::var("ENVIRONMENT")
+                        .unwrap_or_else(|_| "development".into())
+                        .into(),
+                ),
                 ..Default::default()
             },
         ));
 
         let sentry_layer = sentry_tracing::layer().boxed();
         layers.push(sentry_layer);
-        
+
         info!("Sentry error reporting enabled");
     }
 
-    // Tokio Console Layer (for debugging async tasks)
-    // if config.enable_tokio_console {
-    //     // Note: This should only be enabled in development
-    //     let console_layer = console_subscriber::spawn();
-    //     // console_layer would be added here if using the console subscriber
-    //     info!("Tokio console debugging enabled");
-    // }
-
-    // Initialize the subscriber with all layers
-    // let  subscriber = registry
-    //     .with(env_filter)
-    //     .with(layers);
-
-    // Set the global subscriber
-    // subscriber.try_init()
-    //     .map_err(|e| AppError::InternalServerError)?;
-
-    // Initialize distributed tracing (OpenTelemetry)
-    // if config.enable_distributed_tracing {
-    //     init_distributed_tracing().await?;
-    // }
 
     info!("Async logging system initialized successfully");
 
@@ -234,29 +226,6 @@ pub async fn init_async_logging() -> Result<LoggingGuards, AppError> {
         _file_guard: file_guard,
     })
 }
-
-// async fn init_distributed_tracing() -> Result<(), AppError> {
-//     use opentelemetry::global;
-//     use opentelemetry_jaeger::Jaeger;
-//     use opentelemetry_tracing::OpenTelemetryLayer;
-//     use tracing_subscriber::layer::SubscriberExt;
-
-//     // Initialize Jaeger tracer
-//     let tracer = Jaeger::builder()
-//         .with_service_name("product-api")
-//         .with_agent_endpoint(
-//             env::var("JAEGER_AGENT_ENDPOINT")
-//                 .unwrap_or_else(|_| "http://localhost:14268/api/traces".to_string())
-//         )
-//         .build()
-//         .map_err(|e| AppError::BadRequest(format!("Failed to initialize Jaeger: {}", e)))?;
-
-//     // Set the global tracer
-//     global::set_tracer_provider(tracer);
-
-//     info!("Distributed tracing (OpenTelemetry + Jaeger) enabled");
-//     Ok(())
-// }
 
 // Structured logging macros for better consistency
 #[macro_export]

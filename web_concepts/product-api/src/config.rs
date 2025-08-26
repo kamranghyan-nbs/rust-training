@@ -16,9 +16,10 @@ impl Config {
 
         println!("Loading configuration from environment...");
 
-        let database_url = env::var("DATABASE_URL")
-            .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/product_api".to_string());
-        println!("Database URL: {}", database_url);
+        let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| {
+            "postgres://postgres:password@localhost:5432/product_api".to_string()
+        });
+        println!("Database URL: {database_url}");
 
         let jwt_secret = env::var("JWT_SECRET")
             .unwrap_or_else(|_| "your-secret-key-here-make-it-long-and-secure".to_string());
@@ -28,40 +29,40 @@ impl Config {
             .unwrap_or_else(|_| "86400".to_string()) // 24 hours
             .parse()
             .map_err(|e| {
-                eprintln!("Failed to parse JWT_EXPIRATION: {}", e);
-                AppError::BadRequest{
+                eprintln!("Failed to parse JWT_EXPIRATION: {e}");
+                AppError::BadRequest {
                     message: "Invalid JWT_EXPIRATION".to_string(),
                     error_id: uuid::Uuid::new_v4(),
                 }
             })?;
-        println!("JWT expiration: {} seconds", jwt_expiration);
+        println!("JWT expiration: {jwt_expiration} seconds");
 
         let rate_limit_per_ip = env::var("RATE_LIMIT_PER_IP")
             .unwrap_or_else(|_| "100".to_string())
             .parse()
             .map_err(|e| {
-                eprintln!("Failed to parse RATE_LIMIT_PER_IP: {}", e);
-                AppError::BadRequest{
+                eprintln!("Failed to parse RATE_LIMIT_PER_IP: {e}");
+                AppError::BadRequest {
                     message: "Invalid RATE_LIMIT_PER_IP".to_string(),
                     error_id: uuid::Uuid::new_v4(),
                 }
             })?;
-        println!("Rate limit per IP: {} requests/minute", rate_limit_per_ip);
+        println!("Rate limit per IP: {rate_limit_per_ip} requests/minute");
 
         let rate_limit_per_user = env::var("RATE_LIMIT_PER_USER")
             .unwrap_or_else(|_| "200".to_string())
             .parse()
             .map_err(|e| {
-                eprintln!("Failed to parse RATE_LIMIT_PER_USER: {}", e);
-                AppError::BadRequest{
+                eprintln!("Failed to parse RATE_LIMIT_PER_USER: {e}");
+                AppError::BadRequest {
                     message: "Invalid RATE_LIMIT_PER_USER".to_string(),
                     error_id: uuid::Uuid::new_v4(),
                 }
             })?;
-        println!("Rate limit per user: {} requests/minute", rate_limit_per_user);
+        println!("Rate limit per user: {rate_limit_per_user} requests/minute");
 
         println!("Configuration loaded successfully!");
-        
+
         Ok(Config {
             database_url,
             jwt_secret,

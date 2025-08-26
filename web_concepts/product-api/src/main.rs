@@ -1,27 +1,27 @@
 use axum::{
     http::StatusCode,
-    response::{IntoResponse, Response},
+    response::{IntoResponse},
     routing::{delete, get, post, put},
     Router,
 };
 use sea_orm::{Database, DatabaseConnection};
-use tracing::{info, instrument, warn, error};
 use std::sync::Arc;
 use tower::ServiceBuilder;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
+use tracing::{error, info, instrument, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-
+use uuid::Uuid;
 
 mod config;
 mod entities;
 mod error;
 mod handlers;
+mod logging;
 mod middleware;
 mod models;
+mod repository;
 mod services;
 mod utils;
-mod repository;
-mod logging;
 
 use config::Config;
 use error::AppError;
@@ -30,6 +30,10 @@ use middleware::{
     auth::auth_middleware,
     logging::request_logging_middleware,
     rate_limit::{ip_rate_limit_middleware, user_rate_limit_middleware, RateLimiter},
+    rbac::{
+        require_create_permission, require_delete_permission, require_read_permission,
+        require_update_permission,
+    },
 };
 
 #[derive(Clone)]
@@ -63,14 +67,15 @@ async fn main() -> Result<(), AppError> {
 
     // Create rate limiter
     tracing::info!("Initializing rate limiter...");
-    let rate_limiter = RateLimiter::new(
-        config.rate_limit_per_ip,
-        config.rate_limit_per_user,
-    );
+    let rate_limiter = RateLimiter::new(config.rate_limit_per_ip, config.rate_limit_per_user);
 
     // Create app state
     tracing::info!("Creating application state...");
-    let state = AppState { db, config, rate_limiter };
+    let state = AppState {
+        db,
+        config,
+        rate_limiter,
+    };
 
     // Build the application router
     tracing::info!("Building application router...");
@@ -112,7 +117,7 @@ async fn connect_with_retry(database_url: &str) -> Result<DatabaseConnection, Ap
                     attempt = %connection_attempt,
                     "Failed to connect to database, retrying..."
                 );
-                
+
                 tokio::time::sleep(delay).await;
                 retries -= 1;
                 delay *= 2; // Exponential backoff
@@ -124,7 +129,12 @@ async fn connect_with_retry(database_url: &str) -> Result<DatabaseConnection, Ap
                     total_attempts = %6,
                     "Failed to connect to database after all retries"
                 );
-                return Err(AppError::DatabaseError(e));
+                return Err(AppError::DatabaseError {
+                    operation: "insert".to_string(),
+                    table: Some("users".to_string()),
+                    details: e.to_string(),
+                    error_id: Uuid::new_v4(),
+                });
             }
         }
     }
@@ -170,26 +180,47 @@ async fn create_app(state: AppState) -> Router {
             ip_rate_limit_middleware,
         ));
 
-    // Protected routes (authentication required)
-    let protected_routes = Router::new()
+    // Read-only routes (all authenticated users can access)
+    let read_only_routes = Router::new()
         .route("/products", get(product::get_all_products))
-        .route("/products", post(product::create_product))
         .route("/products/:id", get(product::get_product))
-        .route("/products/:id", put(product::update_product))
-        .route("/products/:id", delete(product::delete_product))
-
-        // Search and filter endpoints
         .route("/products/search", get(product::search_products))
         .route("/products/category", get(product::get_products_by_category))
-        .route("/products/price-range", get(product::get_products_by_price_range))
+        .route(
+            "/products/price-range",
+            get(product::get_products_by_price_range),
+        )
         .route("/products/low-stock", get(product::get_low_stock_products))
         .route("/products/similar", get(product::get_similar_products))
-        
-        // Analytics endpoints
         .route("/products/stats", get(product::get_product_stats))
-        .route("/products/trending-categories", get(product::get_trending_categories))
-        
-        // Apply auth middleware first, then user rate limiting
+        .route(
+            "/products/trending-categories",
+            get(product::get_trending_categories),
+        )
+        .layer(axum::middleware::from_fn(require_read_permission));
+
+    // Create routes (Admin and Manager can access)
+    let create_routes = Router::new()
+        .route("/products", post(product::create_product))
+        .layer(axum::middleware::from_fn(require_create_permission));
+
+    // Update routes (Admin and Manager can access)
+    let update_routes = Router::new()
+        .route("/products/:id", put(product::update_product))
+        .layer(axum::middleware::from_fn(require_update_permission));
+
+    // Delete routes (Admin only)
+    let delete_routes = Router::new()
+        .route("/products/:id", delete(product::delete_product))
+        .layer(axum::middleware::from_fn(require_delete_permission));
+
+    // Combine all protected routes
+    let protected_routes = Router::new()
+        .merge(read_only_routes)
+        .merge(create_routes)
+        .merge(update_routes)
+        .merge(delete_routes)
+        // Apply authentication and rate limiting to all protected routes
         .layer(axum::middleware::from_fn_with_state(
             state.rate_limiter.clone(),
             user_rate_limit_middleware,

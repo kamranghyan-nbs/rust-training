@@ -1,14 +1,11 @@
-use crate::error::{types::AppError, registry::ErrorRegistry};
+use crate::error::{registry::ErrorRegistry, types::AppError};
 use axum::{
-    http::StatusCode,
     response::{IntoResponse, Response},
     Json,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tracing::{error, warn, info, debug};
-use uuid::Uuid;
-
+use tracing::{error, info, warn};
 /// Standardized error response format
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorResponse {
@@ -62,10 +59,10 @@ impl ErrorResponse {
     pub fn from_app_error(error: &AppError, request_id: Option<String>) -> Self {
         let definition = ErrorRegistry::get_definition(error);
         let error_id = error.error_id();
-        
+
         // Determine if we should include debug info (based on environment)
         let include_debug = std::env::var("ENVIRONMENT")
-            .unwrap_or_else(|_| "development".to_string()) 
+            .unwrap_or_else(|_| "development".to_string())
             != "production";
 
         let mut details = HashMap::new();
@@ -74,38 +71,89 @@ impl ErrorResponse {
         match error {
             AppError::ValidationError { field, message, .. } => {
                 if let Some(field) = field {
-                    details.insert("field".to_string(), serde_json::Value::String(field.clone()));
+                    details.insert(
+                        "field".to_string(),
+                        serde_json::Value::String(field.clone()),
+                    );
                 }
-                details.insert("validation_message".to_string(), serde_json::Value::String(message.clone()));
+                details.insert(
+                    "validation_message".to_string(),
+                    serde_json::Value::String(message.clone()),
+                );
             }
-            AppError::NotFound { resource_type, resource_id, .. } => {
-                details.insert("resource_type".to_string(), serde_json::Value::String(resource_type.clone()));
+            AppError::NotFound {
+                resource_type,
+                resource_id,
+                ..
+            } => {
+                details.insert(
+                    "resource_type".to_string(),
+                    serde_json::Value::String(resource_type.clone()),
+                );
                 if let Some(id) = resource_id {
-                    details.insert("resource_id".to_string(), serde_json::Value::String(id.clone()));
+                    details.insert(
+                        "resource_id".to_string(),
+                        serde_json::Value::String(id.clone()),
+                    );
                 }
             }
-            AppError::RateLimitExceeded { limit_type, retry_after, .. } => {
-                details.insert("limit_type".to_string(), serde_json::Value::String(limit_type.clone()));
+            AppError::RateLimitExceeded {
+                limit_type,
+                retry_after,
+                ..
+            } => {
+                details.insert(
+                    "limit_type".to_string(),
+                    serde_json::Value::String(limit_type.clone()),
+                );
                 if let Some(retry) = retry_after {
-                    details.insert("retry_after_seconds".to_string(), serde_json::Value::Number((*retry).into()));
+                    details.insert(
+                        "retry_after_seconds".to_string(),
+                        serde_json::Value::Number((*retry).into()),
+                    );
                 }
             }
-            AppError::DatabaseError { operation, table, .. } => {
-                details.insert("operation".to_string(), serde_json::Value::String(operation.clone()));
+            AppError::DatabaseError {
+                operation, table, ..
+            } => {
+                details.insert(
+                    "operation".to_string(),
+                    serde_json::Value::String(operation.clone()),
+                );
                 if let Some(table) = table {
-                    details.insert("table".to_string(), serde_json::Value::String(table.clone()));
+                    details.insert(
+                        "table".to_string(),
+                        serde_json::Value::String(table.clone()),
+                    );
                 }
             }
-            AppError::ExternalServiceError { service, operation, status_code, .. } => {
-                details.insert("service".to_string(), serde_json::Value::String(service.clone()));
-                details.insert("operation".to_string(), serde_json::Value::String(operation.clone()));
+            AppError::ExternalServiceError {
+                service,
+                operation,
+                status_code,
+                ..
+            } => {
+                details.insert(
+                    "service".to_string(),
+                    serde_json::Value::String(service.clone()),
+                );
+                details.insert(
+                    "operation".to_string(),
+                    serde_json::Value::String(operation.clone()),
+                );
                 if let Some(status) = status_code {
-                    details.insert("external_status_code".to_string(), serde_json::Value::Number((*status).into()));
+                    details.insert(
+                        "external_status_code".to_string(),
+                        serde_json::Value::Number((*status).into()),
+                    );
                 }
             }
             AppError::BusinessRuleViolation { rule, context, .. } => {
                 details.insert("rule".to_string(), serde_json::Value::String(rule.clone()));
-                details.insert("context".to_string(), serde_json::Value::String(context.clone()));
+                details.insert(
+                    "context".to_string(),
+                    serde_json::Value::String(context.clone()),
+                );
             }
             _ => {} // No additional details for other error types
         }
@@ -125,7 +173,7 @@ impl ErrorResponse {
             timestamp: chrono::Utc::now(),
             debug_info: if include_debug {
                 Some(DebugInfo {
-                    details: format!("{:?}", error),
+                    details: format!("{error:?}"),
                     trace: None, // Could be populated with stack trace if needed
                     error_id: error_id.to_string(),
                 })
@@ -139,7 +187,7 @@ impl ErrorResponse {
     pub fn log_error(&self, context: &str) {
         let error_code = &self.error.code;
         let error_id = self.debug_info.as_ref().map(|d| &d.error_id);
-        
+
         // Log with different levels based on error category and severity
         match self.error.category.as_str() {
             "authentication" | "authorization" => {
@@ -211,38 +259,32 @@ impl ErrorResponse {
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let definition = ErrorRegistry::get_definition(&self);
-        
+
         // Extract request ID from current span context if available
         let request_id = tracing::Span::current()
-            .field("request_id")
-            .and_then(|field| {
-                // This is a simplified extraction - in real implementation,
-                // you'd extract from span fields properly
-                None as Option<String>
-            });
+        .field("request_id")
+        .and(None::<String>);
 
         // Create structured error response
         let error_response = ErrorResponse::from_app_error(&self, request_id);
-        
+
         // Log the error with appropriate context
         error_response.log_error("http_response");
 
         // Add custom headers for client handling
         let mut response = (definition.status_code, Json(error_response)).into_response();
-        
+
         // Add retry-after header if applicable
         if let Some(retry_after) = self.retry_delay() {
-            response.headers_mut().insert(
-                "retry-after",
-                retry_after.to_string().parse().unwrap(),
-            );
+            response
+                .headers_mut()
+                .insert("retry-after", retry_after.to_string().parse().unwrap());
         }
 
         // Add error ID header for correlation
-        response.headers_mut().insert(
-            "x-error-id",
-            self.error_id().to_string().parse().unwrap(),
-        );
+        response
+            .headers_mut()
+            .insert("x-error-id", self.error_id().to_string().parse().unwrap());
 
         // Add cache control for error responses
         response.headers_mut().insert(
@@ -258,7 +300,7 @@ impl IntoResponse for AppError {
 pub fn create_error_response(error: AppError, context: &str) -> Response {
     // Add context to tracing span
     tracing::Span::current().record("error_context", context);
-    
+
     error.into_response()
 }
 
@@ -266,26 +308,23 @@ pub fn create_error_response(error: AppError, context: &str) -> Response {
 pub fn with_request_id(error: AppError, request_id: String) -> Response {
     let error_response = ErrorResponse::from_app_error(&error, Some(request_id.clone()));
     let definition = ErrorRegistry::get_definition(&error);
-    
+
     error_response.log_error("http_request");
-    
+
     let mut response = (definition.status_code, Json(error_response)).into_response();
-    
+
     // Add headers
-    response.headers_mut().insert(
-        "x-request-id",
-        request_id.parse().unwrap(),
-    );
-    response.headers_mut().insert(
-        "x-error-id", 
-        error.error_id().to_string().parse().unwrap(),
-    );
+    response
+        .headers_mut()
+        .insert("x-request-id", request_id.parse().unwrap());
+    response
+        .headers_mut()
+        .insert("x-error-id", error.error_id().to_string().parse().unwrap());
 
     if let Some(retry_after) = error.retry_delay() {
-        response.headers_mut().insert(
-            "retry-after",
-            retry_after.to_string().parse().unwrap(),
-        );
+        response
+            .headers_mut()
+            .insert("retry-after", retry_after.to_string().parse().unwrap());
     }
 
     response

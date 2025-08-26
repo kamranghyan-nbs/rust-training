@@ -1,3 +1,4 @@
 pub mod auth;
-pub mod rate_limit;
 pub mod logging;
+pub mod rate_limit;
+pub mod rbac;

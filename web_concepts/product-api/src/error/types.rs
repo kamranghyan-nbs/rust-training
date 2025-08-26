@@ -1,54 +1,48 @@
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
-use serde::{Deserialize, Serialize};
 
 /// Main application error type with rich context
 #[derive(Error, Debug, Clone)]
 pub enum AppError {
     // Authentication & Authorization Errors
     #[error("Authentication failed")]
-    Unauthorized { 
+    Unauthorized {
         context: Option<String>,
         error_id: Uuid,
     },
-    
+
     #[error("Access forbidden")]
-    Forbidden { 
+    Forbidden {
         resource: String,
         context: Option<String>,
         error_id: Uuid,
     },
-    
+
     #[error("Invalid JWT token")]
-    InvalidToken { 
-        reason: String,
-        error_id: Uuid,
-    },
+    InvalidToken { reason: String, error_id: Uuid },
 
     // Validation Errors
     #[error("Request validation failed")]
-    ValidationError { 
+    ValidationError {
         field: Option<String>,
         message: String,
         error_id: Uuid,
     },
-    
+
     #[error("Invalid request format")]
-    BadRequest { 
-        message: String,
-        error_id: Uuid,
-    },
+    BadRequest { message: String, error_id: Uuid },
 
     // Resource Errors
     #[error("Resource not found")]
-    NotFound { 
+    NotFound {
         resource_type: String,
         resource_id: Option<String>,
         error_id: Uuid,
     },
-    
+
     #[error("Resource conflict")]
-    Conflict { 
+    Conflict {
         resource_type: String,
         message: String,
         error_id: Uuid,
@@ -56,22 +50,22 @@ pub enum AppError {
 
     // Database Errors
     #[error("Database operation failed")]
-    DatabaseError { 
+    DatabaseError {
         operation: String,
         table: Option<String>,
-        // source: String,
+        details: String,
         error_id: Uuid,
     },
-    
+
     #[error("Database connection failed")]
-    DatabaseConnectionError { 
+    DatabaseConnectionError {
         database_url: String,
         error_id: Uuid,
     },
 
     // External Service Errors
     #[error("External service error")]
-    ExternalServiceError { 
+    ExternalServiceError {
         service: String,
         operation: String,
         status_code: Option<u16>,
@@ -80,7 +74,7 @@ pub enum AppError {
 
     // Rate Limiting
     #[error("Rate limit exceeded")]
-    RateLimitExceeded { 
+    RateLimitExceeded {
         limit_type: String,
         retry_after: Option<u64>,
         error_id: Uuid,
@@ -88,14 +82,14 @@ pub enum AppError {
 
     // Business Logic Errors
     #[error("Business rule violation")]
-    BusinessRuleViolation { 
+    BusinessRuleViolation {
         rule: String,
         context: String,
         error_id: Uuid,
     },
-    
+
     #[error("Insufficient privileges")]
-    InsufficientPrivileges { 
+    InsufficientPrivileges {
         required_role: String,
         current_role: Option<String>,
         error_id: Uuid,
@@ -103,20 +97,20 @@ pub enum AppError {
 
     // System Errors
     #[error("Internal server error")]
-    InternalServerError { 
+    InternalServerError {
         context: Option<String>,
         error_id: Uuid,
     },
-    
+
     #[error("Service unavailable")]
-    ServiceUnavailable { 
+    ServiceUnavailable {
         service: String,
         retry_after: Option<u64>,
         error_id: Uuid,
     },
-    
+
     #[error("Configuration error")]
-    ConfigurationError { 
+    ConfigurationError {
         parameter: String,
         message: String,
         error_id: Uuid,
@@ -124,15 +118,15 @@ pub enum AppError {
 
     // I/O and Parsing Errors
     #[error("File operation failed")]
-    IoError { 
+    IoError {
         operation: String,
         path: Option<String>,
-        source: String,
+        details: String,
         error_id: Uuid,
     },
-    
+
     #[error("Data parsing failed")]
-    ParseError { 
+    ParseError {
         data_type: String,
         message: String,
         error_id: Uuid,
@@ -140,10 +134,7 @@ pub enum AppError {
 
     // Crypto and Security Errors
     #[error("Cryptographic operation failed")]
-    CryptoError { 
-        operation: String,
-        error_id: Uuid,
-    },
+    CryptoError { operation: String, error_id: Uuid },
 }
 
 /// Error severity levels for logging and alerting
@@ -159,7 +150,7 @@ pub enum ErrorSeverity {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ErrorCategory {
     Authentication,
-    Authorization, 
+    Authorization,
     Validation,
     Resource,
     Database,
@@ -218,11 +209,11 @@ impl AppError {
         }
     }
 
-    pub fn database_error(operation: String, table: Option<String>, source: String) -> Self {
+    pub fn database_error(operation: String, table: Option<String>, details: String) -> Self {
         Self::DatabaseError {
             operation,
             table,
-            // source,
+            details,
             error_id: Uuid::new_v4(),
         }
     }
@@ -281,16 +272,17 @@ impl AppError {
             Self::ValidationError { .. } | Self::BadRequest { .. } | Self::NotFound { .. } => {
                 ErrorSeverity::Low
             }
-            Self::RateLimitExceeded { .. } | Self::Conflict { .. } | Self::BusinessRuleViolation { .. } => {
-                ErrorSeverity::Medium
-            }
-            Self::DatabaseError { .. } | Self::ExternalServiceError { .. } | Self::ServiceUnavailable { .. } => {
-                ErrorSeverity::High
-            }
-            Self::Unauthorized { .. } | Self::Forbidden { .. } | Self::InvalidToken { .. } 
-            | Self::InsufficientPrivileges { .. } | Self::CryptoError { .. } => {
-                ErrorSeverity::Critical
-            }
+            Self::RateLimitExceeded { .. }
+            | Self::Conflict { .. }
+            | Self::BusinessRuleViolation { .. } => ErrorSeverity::Medium,
+            Self::DatabaseError { .. }
+            | Self::ExternalServiceError { .. }
+            | Self::ServiceUnavailable { .. } => ErrorSeverity::High,
+            Self::Unauthorized { .. }
+            | Self::Forbidden { .. }
+            | Self::InvalidToken { .. }
+            | Self::InsufficientPrivileges { .. }
+            | Self::CryptoError { .. } => ErrorSeverity::Critical,
             _ => ErrorSeverity::High,
         }
     }
@@ -299,10 +291,14 @@ impl AppError {
     pub fn category(&self) -> ErrorCategory {
         match self {
             Self::Unauthorized { .. } | Self::InvalidToken { .. } => ErrorCategory::Authentication,
-            Self::Forbidden { .. } | Self::InsufficientPrivileges { .. } => ErrorCategory::Authorization,
+            Self::Forbidden { .. } | Self::InsufficientPrivileges { .. } => {
+                ErrorCategory::Authorization
+            }
             Self::ValidationError { .. } | Self::BadRequest { .. } => ErrorCategory::Validation,
             Self::NotFound { .. } | Self::Conflict { .. } => ErrorCategory::Resource,
-            Self::DatabaseError { .. } | Self::DatabaseConnectionError { .. } => ErrorCategory::Database,
+            Self::DatabaseError { .. } | Self::DatabaseConnectionError { .. } => {
+                ErrorCategory::Database
+            }
             Self::ExternalServiceError { .. } => ErrorCategory::ExternalService,
             Self::RateLimitExceeded { .. } => ErrorCategory::RateLimit,
             Self::BusinessRuleViolation { .. } => ErrorCategory::Business,
@@ -316,9 +312,9 @@ impl AppError {
         matches!(
             self,
             Self::ServiceUnavailable { .. }
-            | Self::DatabaseConnectionError { .. }
-            | Self::ExternalServiceError { .. }
-            | Self::InternalServerError { .. }
+                | Self::DatabaseConnectionError { .. }
+                | Self::ExternalServiceError { .. }
+                | Self::InternalServerError { .. }
         )
     }
 
@@ -345,7 +341,7 @@ impl From<std::io::Error> for AppError {
         Self::IoError {
             operation: "io_operation".to_string(),
             path: None,
-            source: err.to_string(),
+            details: err.to_string(),
             error_id: Uuid::new_v4(),
         }
     }
@@ -361,7 +357,7 @@ impl From<jsonwebtoken::errors::Error> for AppError {
 }
 
 impl From<bcrypt::BcryptError> for AppError {
-    fn from(err: bcrypt::BcryptError) -> Self {
+    fn from(_err: bcrypt::BcryptError) -> Self {
         Self::CryptoError {
             operation: "password_hashing".to_string(),
             error_id: Uuid::new_v4(),
@@ -377,7 +373,12 @@ impl From<validator::ValidationErrors> for AppError {
             .map(|(field, errors)| {
                 let messages: Vec<String> = errors
                     .iter()
-                    .map(|e| e.message.as_ref().map(|m| m.to_string()).unwrap_or_else(|| "Invalid value".to_string()))
+                    .map(|e| {
+                        e.message
+                            .as_ref()
+                            .map(|m| m.to_string())
+                            .unwrap_or_else(|| "Invalid value".to_string())
+                    })
                     .collect();
                 format!("{}: {}", field, messages.join(", "))
             })
