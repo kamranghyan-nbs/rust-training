@@ -1,0 +1,13 @@
+[package]
+name = "crate-security"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+jsonwebtoken = { workspace = true }
+serde = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+argon2 = { workspace = true }
+rand = { workspace = true }
+crate-errors = { path = "../crate-errors" }

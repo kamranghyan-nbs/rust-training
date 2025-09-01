@@ -1,0 +1,10 @@
+[package]
+name = "crate-config"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+figment = { version = "0.10", features = ["toml", "env"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }

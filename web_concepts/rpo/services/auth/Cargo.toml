@@ -1,0 +1,46 @@
+[package]
+name = "auth-service"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "auth-service"
+path = "src/main.rs"
+
+[[bin]]
+name = "migrator"
+path = "src/bin/migrator.rs"
+
+[dependencies]
+# Workspace dependencies
+tokio = { workspace = true }
+axum = { workspace = true }
+axum-extra = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+sea-orm = { workspace = true }
+sea-orm-migration = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+jsonwebtoken = { workspace = true }
+argon2 = { workspace = true }
+validator = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+utoipa = { workspace = true }
+utoipa-swagger-ui = { workspace = true }
+async-trait = { workspace = true }
+reqwest = { workspace = true }
+
+# Shared crates
+crate-config = { path = "../../shared/crate-config" }
+crate-errors = { path = "../../shared/crate-errors" }
+crate-security = { path = "../../shared/crate-security" }
+crate-logging = { path = "../../shared/crate-logging" }
+crate-messaging = { path = "../../shared/crate-messaging" }
+
+[dev-dependencies]
+tokio-test = { workspace = true }
